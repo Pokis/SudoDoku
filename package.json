@@ -1,0 +1,14 @@
+{
+  "name": "sudodoku",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "quality": "node scripts/quality-check.mjs",
+    "check": "node --check src/app.js && node --check sw.js && node --test && node scripts/quality-check.mjs",
+    "browser:smoke": "node scripts/browser-smoke.mjs artifacts",
+    "serve": "node scripts/serve.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

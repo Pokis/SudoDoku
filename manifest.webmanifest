@@ -1,0 +1,21 @@
+{
+  "name": "Sudodoku for Edmundas — Find your flow",
+  "short_name": "Sudodoku",
+  "description": "A beautiful, focused Sudoku experience made especially for Edmundas and ready offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6f4ff",
+  "theme_color": "#6d5dfc",
+  "shortcuts": [
+    {"name":"Daily challenge","short_name":"Daily","description":"Open today’s seeded challenge","url":"./?mode=daily","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]},
+    {"name":"Mini 6×6","short_name":"Mini","description":"Start a quick compact puzzle","url":"./?mode=mini","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]},
+    {"name":"Killer Sudoku","short_name":"Killer","description":"Start a cage-and-sums puzzle","url":"./?mode=killer","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]}
+  ],
+  "icons": [
+    {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"},
+    {"src":"./icons/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}

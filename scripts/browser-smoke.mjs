@@ -1,0 +1,235 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
+
+const baseUrl = process.env.SUDODOKU_URL || 'http://127.0.0.1:4173/';
+const outputDir = resolve(process.argv[2] || 'artifacts');
+const profileDir = resolve(tmpdir(), `sudodoku-browser-smoke-${process.pid}`);
+const chrome = process.env.CHROME_BIN || (process.platform === 'win32'
+  ? ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'].find(existsSync)
+  : 'google-chrome');
+assert.ok(chrome, 'Chrome or Edge is required for browser smoke tests');
+
+await mkdir(outputDir, { recursive:true });
+await rm(profileDir, { recursive:true, force:true });
+
+const browser = spawn(chrome, [
+  '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--remote-debugging-port=0',
+  `--user-data-dir=${profileDir}`, '--window-size=1440,1000', baseUrl,
+], { stdio:['ignore', 'ignore', 'pipe'], windowsHide:true });
+
+function debuggingUrl() {
+  return new Promise((resolveUrl, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Chrome DevTools endpoint did not start')), 12000);
+    browser.stderr.on('data', (chunk) => {
+      const match = String(chunk).match(/DevTools listening on (ws:\/\/[^\s]+)/);
+      if (match) { clearTimeout(timeout); resolveUrl(match[1]); }
+    });
+    browser.once('exit', (code) => { clearTimeout(timeout); reject(new Error(`Chrome exited early (${code})`)); });
+  });
+}
+
+class Cdp {
+  constructor(url) {
+    this.socket = new WebSocket(url);
+    this.id = 0;
+    this.pending = new Map();
+    this.waiters = new Map();
+    this.socket.addEventListener('message', ({ data }) => {
+      const message = JSON.parse(String(data));
+      if (message.id) {
+        const pending = this.pending.get(message.id);
+        this.pending.delete(message.id);
+        if (message.error) pending?.reject(new Error(message.error.message)); else pending?.resolve(message.result);
+      } else if (message.method) {
+        const waiters = this.waiters.get(message.method) || [];
+        this.waiters.delete(message.method);
+        waiters.forEach((resolveEvent) => resolveEvent(message.params));
+      }
+    });
+  }
+  ready() {
+    if (this.socket.readyState === WebSocket.OPEN) return Promise.resolve();
+    return new Promise((resolveReady, reject) => {
+      this.socket.addEventListener('open', resolveReady, { once:true });
+      this.socket.addEventListener('error', reject, { once:true });
+    });
+  }
+  call(method, params = {}) {
+    const id = ++this.id;
+    return new Promise((resolveCall, reject) => {
+      this.pending.set(id, { resolve:resolveCall, reject });
+      this.socket.send(JSON.stringify({ id, method, params }));
+    });
+  }
+  event(method) {
+    return new Promise((resolveEvent, reject) => {
+      const timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${method}`)), 10000);
+      const wrapped = (value) => { clearTimeout(timeout); resolveEvent(value); };
+      this.waiters.set(method, [...(this.waiters.get(method) || []), wrapped]);
+    });
+  }
+  close() { this.socket.close(); }
+}
+
+const delay = (milliseconds) => new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
+let cdp;
+try {
+  const browserWs = await debuggingUrl();
+  const devtoolsOrigin = browserWs.replace(/^ws:/, 'http:').replace(/\/devtools\/browser\/.*$/, '');
+  let page;
+  for (let attempt = 0; attempt < 30 && !page; attempt += 1) {
+    const targets = await fetch(`${devtoolsOrigin}/json/list`).then((response) => response.json());
+    page = targets.find((target) => target.type === 'page' && target.url.startsWith(baseUrl));
+    if (!page) await delay(100);
+  }
+  assert.ok(page, 'Sudodoku page target was not created');
+  cdp = new Cdp(page.webSocketDebuggerUrl);
+  await cdp.ready();
+  await cdp.call('Page.enable');
+  await cdp.call('Runtime.enable');
+
+  const evaluate = async (expression, awaitPromise = false) => {
+    const result = await cdp.call('Runtime.evaluate', { expression, awaitPromise, returnByValue:true });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text || 'Browser evaluation failed');
+    return result.result.value;
+  };
+  const waitFor = async (expression) => {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if (await evaluate(expression)) return;
+      await delay(100);
+    }
+    throw new Error(`Browser condition timed out: ${expression}`);
+  };
+  const screenshot = async (name) => {
+    const { data } = await cdp.call('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+    await writeFile(resolve(outputDir, name), Buffer.from(data, 'base64'));
+  };
+
+  await waitFor("document.querySelectorAll('.cell').length > 0");
+  const dedication = await evaluate(`(() => ({
+    title:document.title,
+    intro:document.querySelector('.intro-dedication strong').textContent.trim()
+  }))()`);
+  assert.match(dedication.title, /Edmundas/);
+  assert.match(dedication.intro, /Edmundas/);
+  await delay(700);
+  await screenshot('desktop-edmundas-welcome-1440x1000.png');
+  await evaluate("navigator.serviceWorker.ready.then(() => true)", true);
+  await evaluate("localStorage.setItem('sudodoku-prefs-v1', JSON.stringify({ onboarded:true, language:'en' }))");
+  const loaded = cdp.event('Page.loadEventFired');
+  await cdp.call('Page.navigate', { url:baseUrl });
+  await loaded;
+  await waitFor("document.querySelectorAll('.cell').length > 0 && document.querySelector('#introScreen').hidden");
+  const controlled = await evaluate(`new Promise((resolve) => {
+    if (navigator.serviceWorker.controller) { resolve(true); return; }
+    navigator.serviceWorker.addEventListener('controllerchange', () => resolve(true), { once:true });
+    setTimeout(() => resolve(!!navigator.serviceWorker.controller), 4000);
+  })`, true);
+  if (!controlled) {
+    const details = await evaluate("navigator.serviceWorker.getRegistration().then((registration) => ({ scope:registration?.scope, active:registration?.active?.state, waiting:registration?.waiting?.state, installing:registration?.installing?.state, controller:!!navigator.serviceWorker.controller }))", true);
+    console.error('Service worker diagnostic:', details);
+  }
+  assert.equal(controlled, true, 'Service worker must control the smoke-test page');
+
+  await cdp.call('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:true });
+  await delay(250);
+  const notes = await evaluate(`(() => {
+    const cell = [...document.querySelectorAll('.cell')].find((item) => !item.classList.contains('given'));
+    cell.click(); document.querySelector('#notesButton').click(); document.querySelector('.number-button').click();
+    const selected = document.querySelector('.cell.selected'); const note = selected.querySelector('.notes');
+    return { hasNote:note.textContent.trim().length > 0, noteColor:getComputedStyle(note).color, selectedColor:getComputedStyle(selected).backgroundColor };
+  })()`);
+  assert.equal(notes.hasNote, true, 'A note must remain visible while its cell is selected');
+  assert.notEqual(notes.noteColor, notes.selectedColor, 'Selected notes need distinct contrast');
+  await screenshot('mobile-gameplay-390x844.png');
+
+  const hint = await evaluate(`(() => {
+    document.querySelector('#hintButton').click();
+    return { coach:document.querySelector('#hintCoach').classList.contains('visible'), highlighted:!!document.querySelector('.hint-revealed,.hint-pattern,.hint-elimination') };
+  })()`);
+  assert.equal(hint.coach, true, 'Hint coach must become visible');
+  assert.equal(hint.highlighted, true, 'A hint must visibly highlight its board context');
+
+  await evaluate("document.querySelector('#settingsButton').click()");
+  await delay(200);
+  await screenshot('mobile-edmundas-settings-390x844.png');
+  await evaluate("document.querySelector('.pwa-center').scrollIntoView({block:'center'})");
+  await delay(500);
+  const pwa = await evaluate(`(() => ({
+    dialog:document.querySelector('#settingsDialog').open,
+    cache:document.querySelector('#pwaCache').textContent.trim(),
+    version:document.querySelector('#pwaVersion').textContent.trim(),
+    serviceWorker:!!navigator.serviceWorker.controller
+  }))()`);
+  assert.equal(pwa.dialog, true, 'Settings must open on mobile');
+  assert.ok(pwa.cache, 'PWA cache diagnostic must be visible');
+  assert.match(pwa.version, /^v\d+$/);
+  assert.equal(pwa.serviceWorker, true, 'PWA diagnostics must report an active controller');
+  assert.ok(await evaluate("!!document.querySelector('#backupExportButton') && !!document.querySelector('#backupRestoreButton')"), 'Backup and restore controls must be present');
+  assert.match(await evaluate("document.querySelector('.settings-dedication strong').textContent"), /Edmundas/, 'Settings must preserve the personal dedication');
+  await screenshot('mobile-pwa-center-390x844.png');
+
+  await evaluate("document.querySelector('#settingsDialog').close()");
+  const academy = await evaluate(`(() => {
+    document.querySelector('#academyButton').click();
+    return { dialog:document.querySelector('#academyDialog').open, lessons:document.querySelectorAll('#academyLessonList button').length, cells:document.querySelectorAll('#academyBoard .academy-cell').length, choices:document.querySelectorAll('#academyChoices button').length };
+  })()`);
+  assert.equal(academy.dialog, true, 'Technique Academy must open from the game');
+  assert.equal(academy.lessons, 4);
+  assert.equal(academy.cells, 81);
+  assert.equal(academy.choices, 3);
+  const academyResult = await evaluate(`(() => {
+    document.querySelector('#academyChoices [data-answer="6"]').click();
+    const stored = JSON.parse(localStorage.getItem('sudodoku-stats-v1'));
+    return { feedback:document.querySelector('#academyFeedback').classList.contains('correct'), completed:stored.academyCompleted.includes('nakedSingle') };
+  })()`);
+  assert.equal(academyResult.feedback, true, 'Correct Academy answers need visible feedback');
+  assert.equal(academyResult.completed, true, 'Academy mastery must persist locally');
+  await screenshot('mobile-technique-academy-390x844.png');
+  const academyPatterns = await evaluate(`(() => Object.fromEntries(['nakedSingle','hiddenSingle','nakedPair','xWing'].map((id) => {
+    document.querySelector('[data-lesson="' + id + '"]').click();
+    return [id, { pattern:document.querySelectorAll('#academyBoard .pattern-cell').length, elimination:document.querySelectorAll('#academyBoard .elimination-cell').length }];
+  })))()`);
+  assert.deepEqual(Object.values(academyPatterns).map(({ pattern }) => pattern), [1, 1, 2, 4]);
+  assert.ok(academyPatterns.nakedPair.elimination > 0 && academyPatterns.xWing.elimination > 0, 'Advanced lessons must display eliminations');
+
+  const backup = await evaluate(`(() => {
+    document.querySelector('#academyDialog').close(); document.querySelector('#settingsButton').click();
+    HTMLAnchorElement.prototype.click = function smokeDownload() {};
+    document.querySelector('#backupExportButton').click(); document.querySelector('.transfer-center').scrollIntoView({block:'center'});
+    return { status:document.querySelector('#backupStatus').dataset.state, summary:document.querySelector('#backupSummary').textContent.trim() };
+  })()`);
+  assert.equal(backup.status, 'success', 'Backup export must report success');
+  assert.ok(backup.summary, 'Backup summary must describe local progress');
+  await delay(200);
+  await screenshot('mobile-backup-transfer-390x844.png');
+  await evaluate(`(async () => {
+    const { createBackupPayload } = await import('./src/backup.js');
+    const payload = createBackupPayload({
+      prefs:JSON.parse(localStorage.getItem('sudodoku-prefs-v1')),
+      stats:JSON.parse(localStorage.getItem('sudodoku-stats-v1')),
+      game:JSON.parse(localStorage.getItem('sudodoku-game-v1')),
+    });
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([JSON.stringify(payload)], 'smoke.sudodoku', { type:'application/json' }));
+    const input = document.querySelector('#backupFileInput'); input.files = transfer.files;
+    window.confirm = () => false;
+    input.dispatchEvent(new Event('change', { bubbles:true }));
+  })()`, true);
+  await delay(200);
+  assert.match(await evaluate("document.querySelector('#backupStatus').textContent"), /cancel/i, 'Validated restore must reach the replacement confirmation');
+
+  await evaluate("document.querySelector('#settingsDialog').close()");
+  await cdp.call('Emulation.setDeviceMetricsOverride', { width:1440, height:1000, deviceScaleFactor:1, mobile:false });
+  await delay(250);
+  await screenshot('desktop-gameplay-1440x1000.png');
+  console.log(`Browser smoke passed: Edmundas dedication, notes, hints, PWA, Academy, backup, and responsive layouts.`);
+} finally {
+  cdp?.close();
+  browser.kill();
+  await rm(profileDir, { recursive:true, force:true }).catch(() => {});
+}

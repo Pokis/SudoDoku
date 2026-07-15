@@ -1,0 +1,52 @@
+name: Deploy Sudodoku to Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Unit, accessibility, PWA and puzzle stress checks
+        run: npm run check
+      - name: Capture responsive smoke-test screenshots
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          node scripts/serve.mjs > /tmp/sudodoku-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+          curl --fail --retry 8 --retry-delay 1 http://127.0.0.1:4173/
+          npm run browser:smoke
+      - name: Upload responsive snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: responsive-smoke-snapshots
+          path: artifacts/
+          retention-days: 14
+  deploy:
+    needs: quality
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
