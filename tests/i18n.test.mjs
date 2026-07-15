@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { LOCALES, translate } from '../src/i18n.js';
 
 test('all advertised languages resolve core interface text', () => {
-  const coreKeys = ['intro.title', 'settings.language', 'game.newGame', 'tools.hint', 'daily.today', 'result.share', 'stats.title', 'mode.killer', 'mode.hyper', 'mode.mini', 'mode.zen', 'replay.title', 'quest.weekly', 'pwa.title', 'pwa.updateNow', 'academy.title', 'academy.nakedPair.title', 'backup.title', 'backup.restore', 'dedication.madeFor', 'dedication.footer'];
+  const coreKeys = ['intro.title', 'settings.language', 'game.newGame', 'tools.hint', 'daily.today', 'result.share', 'stats.title', 'mode.killer', 'mode.hyper', 'mode.mini', 'mode.zen', 'replay.title', 'quest.weekly', 'pwa.title', 'pwa.updateNow', 'academy.title', 'academy.nakedPair.title', 'backup.title', 'backup.restore', 'dedication.madeFor', 'dedication.footer', 'mainMenu.welcome', 'mainMenu.open', 'toast.smartNotesOn', 'toast.smartNotesOff'];
   for (const { code } of LOCALES) {
     for (const key of coreKeys) assert.notEqual(translate(code, key), key, `${code} should resolve ${key}`);
   }
@@ -20,6 +20,8 @@ test('Lithuanian localization covers onboarding and gameplay', () => {
 test('the Edmundas dedication is explicit in the primary experience', () => {
   assert.match(translate('en', 'dedication.madeFor'), /Edmundas/);
   assert.match(translate('en', 'dedication.footer'), /Edmundas/);
+  assert.match(translate('en', 'mainMenu.welcome'), /Edmundas/);
+  assert.match(translate('lt', 'mainMenu.forEdmundas'), /Edmundui/);
   assert.match(translate('en', 'share.cardFooter'), /Edmundas/);
 });
 

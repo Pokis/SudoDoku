@@ -25,6 +25,8 @@ Service workers require HTTP rather than opening `index.html` directly:
 npm run serve
 ```
 
+The server starts at `http://127.0.0.1:4173`. If that port is occupied, it automatically tries `4174`, `4175`, and so on until it finds a free port. Set `PORT` to choose a different starting port.
+
 Run the puzzle engine tests with `npm test`.
 
 ## Deploy to GitHub Pages

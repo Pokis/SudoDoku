@@ -109,7 +109,6 @@ let deferredInstallPrompt;
 let updateRequested = false;
 let academyCurrentLesson = ACADEMY_LESSONS[0].id;
 let pendingAcademyEvents = [];
-let resumeAfterMainMenu = false;
 
 const t = (key, variables) => translate(prefs.language, key, variables);
 
@@ -339,6 +338,7 @@ function applyLocale(refresh = true) {
   elements.introLanguage.setAttribute('aria-label', t('common.language'));
   elements.settingsLanguage.setAttribute('aria-label', t('common.language'));
   elements.updateDismiss.setAttribute('aria-label', t('pwa.dismiss'));
+  elements.homeButton.setAttribute('aria-label', t('mainMenu.open'));
   if (refresh && state) { render(); updateStatsUI(); }
   if (elements.academyDialog.open) renderAcademyLesson();
   if (elements.pwaSummary) void updatePwaUI();
@@ -360,6 +360,7 @@ function initializeMiniBoard() {
 
 function showIntro() {
   elements.settingsDialog.close();
+  closeMainMenu(false);
   elements.introScreen.hidden = false;
   document.body.classList.add('onboarding-open');
   elements.introLanguage.focus({ preventScroll: true });
@@ -556,6 +557,7 @@ function enterNumber(number) {
       tone(620, .055);
     }
     recordReplay('value', { index, value: number });
+    if (state.smartNotesActive) refreshSmartNotes();
   }
   render();
   save();
@@ -569,6 +571,7 @@ function erase() {
   state.lastHint = null;
   state.values[index] = 0;
   state.notes[index] = [];
+  if (state.smartNotesActive) refreshSmartNotes();
   recordReplay('erase', { index, value: 0 });
   tone(300, .035);
   render(); save();
@@ -636,22 +639,34 @@ function useHint() {
   if (isComplete(state.values, state.solution)) endGame(true);
 }
 
-function fillSmartNotes() {
-  if (state.paused || state.status !== 'playing') return;
-  pushHistory();
-  state.lastHint = null;
+function refreshSmartNotes() {
   let filled = 0;
   state.values.forEach((value, index) => {
-    if (value) return;
+    if (value) { state.notes[index] = []; return; }
     const options = getCandidates(state.values, index, state.variant);
     state.notes[index] = options;
     filled += options.length;
   });
-  state.autoNotesUsed = true;
-  state.notesMode = true;
+  return filled;
+}
+
+function toggleSmartNotes() {
+  if (state.paused || state.status !== 'playing') return;
+  pushHistory();
+  state.lastHint = null;
+  if (state.smartNotesActive) {
+    state.smartNotesActive = false;
+    state.notes = state.notes.map(() => []);
+    showToast(t('toast.smartNotesOff'));
+  } else {
+    state.smartNotesActive = true;
+    state.autoNotesUsed = true;
+    state.notesMode = false;
+    const filled = refreshSmartNotes();
+    showToast(t('toast.smartNotesOn', { count:filled }));
+  }
   haptic(20);
-  tone(600, .07); render(); save();
-  showToast(t('toast.smartNotes', { count: filled }));
+  tone(state.smartNotesActive ? 600 : 330, .07); render(); save();
 }
 
 function dismissHint() {
@@ -882,6 +897,7 @@ function endGame(won) {
 }
 
 function startNewGame(difficulty = state?.difficulty || 'medium', options = {}) {
+  closeMainMenu(false);
   elements.dialog.close(); elements.statsDialog.close();
   showToast(t('toast.creating'));
   requestAnimationFrame(() => setTimeout(() => {
@@ -901,6 +917,43 @@ function startDailyGame() {
 function startModeGame(mode) {
   const variant = mode === 'hyper' ? 'hyper' : mode === 'mini' ? 'mini' : 'classic';
   startNewGame(state?.difficulty || 'medium', { mode, variant });
+}
+
+function updateMainMenu() {
+  if (!state) return;
+  const completed = state.values.filter((value, index) => value === state.solution[index]).length;
+  const percent = Math.round((completed / state.values.length) * 100);
+  const playable = state.status === 'playing';
+  elements.menuContinueButton.querySelector('small').textContent = t(playable ? 'mainMenu.continue' : 'mainMenu.startFresh');
+  elements.menuContinueTitle.textContent = playable ? `${t(`mode.${state.mode}`)} · ${t(`difficulty.${state.difficulty}`)}` : t('mode.classic');
+  elements.menuContinueProgress.textContent = playable ? t('mainMenu.progress', { percent }) : t('mainMenu.ready');
+  elements.menuLevel.textContent = t('progress.level', { level:playerLevel() });
+  elements.menuPoints.textContent = Number(stats.points || 0).toLocaleString();
+  elements.menuAchievements.textContent = stats.achievements.length;
+  elements.menuLessons.textContent = `${stats.academyCompleted.length} / ${ACADEMY_LESSONS.length}`;
+}
+
+function openMainMenu(event) {
+  event?.preventDefault();
+  if (!elements.introScreen.hidden || !elements.mainMenu.hidden) return;
+  if (state.status === 'playing') { state.paused = true; render(); save(); }
+  updateMainMenu();
+  elements.mainMenu.hidden = false;
+  document.body.classList.add('main-menu-open');
+  elements.mainMenu.scrollTop = 0;
+  requestAnimationFrame(() => elements.menuContinueButton.focus({ preventScroll:true }));
+}
+
+function closeMainMenu(resume = true) {
+  if (!elements.mainMenu || elements.mainMenu.hidden) return;
+  elements.mainMenu.hidden = true;
+  document.body.classList.remove('main-menu-open');
+  if (resume && state?.status === 'playing') { state.paused = false; render(); save(); }
+}
+
+function continueFromMainMenu() {
+  if (state.status === 'playing') closeMainMenu(true);
+  else startModeGame('classic');
 }
 
 function updateAcademyProgressUI() {
@@ -1079,6 +1132,7 @@ function updateStatsUI() {
   renderCustomizationOptions();
   updateAcademyProgressUI();
   updateBackupUI();
+  updateMainMenu();
 }
 
 function buildReplayFrames() {
@@ -1200,9 +1254,15 @@ async function shareResult() {
 
 function showToast(message) {
   clearTimeout(toastId);
+  const openDialog = [...document.querySelectorAll('dialog[open]')].at(-1);
+  if (openDialog) openDialog.append(elements.toast);
+  else if (elements.toast.parentElement !== document.body) document.body.append(elements.toast);
   elements.toast.textContent = message;
   elements.toast.classList.add('show');
-  toastId = setTimeout(() => elements.toast.classList.remove('show'), 1900);
+  toastId = setTimeout(() => {
+    elements.toast.classList.remove('show');
+    setTimeout(() => { if (!elements.toast.classList.contains('show') && elements.toast.parentElement !== document.body) document.body.append(elements.toast); }, 260);
+  }, 1900);
 }
 
 function tone(frequency, duration, type = 'sine') {
@@ -1278,7 +1338,7 @@ async function updatePwaUI() {
   elements.pwaCache.textContent = t(supported && (navigator.serviceWorker.controller || swRegistration?.active) ? 'pwa.ready' : 'pwa.unavailable');
   const worker = swRegistration?.waiting || swRegistration?.active || navigator.serviceWorker?.controller;
   const version = supported ? await messageServiceWorker(worker, 'GET_VERSION') : null;
-  elements.pwaVersion.textContent = version?.version || 'v12';
+  elements.pwaVersion.textContent = version?.version || 'v13';
   elements.pwaSummary.textContent = swRegistration?.waiting ? t('pwa.summaryUpdate') : t('pwa.summaryReady');
 }
 
@@ -1328,10 +1388,21 @@ function moveSelection(deltaRow, deltaCol) {
 }
 
 function bindEvents() {
+  elements.homeButton.addEventListener('click', openMainMenu);
+  elements.gameMenuButton.addEventListener('click', openMainMenu);
+  elements.menuContinueButton.addEventListener('click', continueFromMainMenu);
+  elements.mainMenu.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-menu-mode]');
+    if (!button) return;
+    if (button.dataset.menuMode === 'daily') startDailyGame(); else startModeGame(button.dataset.menuMode);
+  });
+  elements.menuAcademyButton.addEventListener('click', openAcademy);
+  elements.menuStatsButton.addEventListener('click', () => { updateStatsUI(); elements.statsDialog.showModal(); });
+  elements.menuSettingsButton.addEventListener('click', () => { elements.settingsLanguage.value = prefs.language; void updatePwaUI(); elements.settingsDialog.showModal(); });
   elements.pauseButton.addEventListener('click', () => setPaused(!state.paused));
   elements.resumeButton.addEventListener('click', () => setPaused(false));
   elements.notesButton.addEventListener('click', toggleNotes);
-  elements.autoNotesButton.addEventListener('click', fillSmartNotes);
+  elements.autoNotesButton.addEventListener('click', toggleSmartNotes);
   elements.eraseButton.addEventListener('click', erase);
   elements.undoButton.addEventListener('click', undo);
   elements.hintButton.addEventListener('click', useHint);
@@ -1397,11 +1468,15 @@ function bindEvents() {
   elements.statsPlay.addEventListener('click', () => elements.statsDialog.close());
 
   document.addEventListener('keydown', (event) => {
+    if (!elements.mainMenu.hidden) {
+      if (event.key === 'Escape') { closeMainMenu(true); event.preventDefault(); }
+      return;
+    }
     if (elements.dialog.open || elements.statsDialog.open || elements.settingsDialog.open || elements.replayDialog.open || elements.academyDialog.open || !elements.introScreen.hidden) return;
     if (/^[1-9]$/.test(event.key) && Number(event.key) <= state.size) enterNumber(Number(event.key));
     else if (event.key === 'Backspace' || event.key === 'Delete' || event.key === '0') erase();
     else if (event.key.toLowerCase() === 'n') toggleNotes();
-    else if (event.key.toLowerCase() === 'a') fillSmartNotes();
+    else if (event.key.toLowerCase() === 'a') toggleSmartNotes();
     else if (event.key.toLowerCase() === 'z' && (event.ctrlKey || event.metaKey)) undo();
     else if (event.key === 'ArrowUp') moveSelection(-1, 0);
     else if (event.key === 'ArrowDown') moveSelection(1, 0);
@@ -1479,6 +1554,7 @@ function init() {
     state.seenTechniqueSignatures = Array.isArray(state.seenTechniqueSignatures) ? state.seenTechniqueSignatures : [];
     state.hintsUsed ||= 0;
     state.autoNotesUsed ||= false;
+    state.smartNotesActive ||= false;
     state.manualNotesUsed ||= false;
     state.lastHint ||= null;
     if (state.lastHint && !state.lastHint.technique) state.lastHint.technique = 'reveal';
@@ -1491,6 +1567,7 @@ function init() {
   initializeBoard(state.size); bindEvents();
   render(); updateStatsUI(); startTimer(); registerServiceWorker();
   if (!prefs.onboarded) showIntro();
+  else if (!shortcutMode) openMainMenu();
 }
 
 init();

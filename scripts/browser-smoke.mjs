@@ -123,7 +123,17 @@ try {
   const loaded = cdp.event('Page.loadEventFired');
   await cdp.call('Page.navigate', { url:baseUrl });
   await loaded;
-  await waitFor("document.querySelectorAll('.cell').length > 0 && document.querySelector('#introScreen').hidden");
+  await waitFor("document.querySelectorAll('.cell').length > 0 && document.querySelector('#introScreen').hidden && !document.querySelector('#mainMenu').hidden");
+  const mainMenu = await evaluate(`(() => ({
+    visible:!document.querySelector('#mainMenu').hidden,
+    welcome:document.querySelector('#mainMenuTitle').textContent.trim(),
+    modes:document.querySelectorAll('[data-menu-mode]').length,
+    menuButton:!!document.querySelector('#gameMenuButton')
+  }))()`);
+  assert.equal(mainMenu.visible, true, 'Returning players must land on the main menu');
+  assert.match(mainMenu.welcome, /Edmundas/, 'The main menu must make the Edmundas dedication prominent');
+  assert.equal(mainMenu.modes, 6, 'The main menu must expose all six game modes');
+  assert.equal(mainMenu.menuButton, true, 'Gameplay must provide an explicit main-menu action');
   const controlled = await evaluate(`new Promise((resolve) => {
     if (navigator.serviceWorker.controller) { resolve(true); return; }
     navigator.serviceWorker.addEventListener('controllerchange', () => resolve(true), { once:true });
@@ -137,6 +147,38 @@ try {
 
   await cdp.call('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:true });
   await delay(250);
+  await screenshot('mobile-main-menu-390x844.png');
+  await evaluate("document.querySelector('#menuContinueButton').click()");
+  await waitFor("document.querySelector('#mainMenu').hidden && !document.body.classList.contains('main-menu-open')");
+  await delay(300);
+
+  const smartNotesOn = await evaluate(`(() => {
+    document.querySelector('#autoNotesButton').click();
+    return {
+      active:document.querySelector('#autoNotesButton').classList.contains('active'),
+      pressed:document.querySelector('#autoNotesButton').getAttribute('aria-pressed'),
+      badge:document.querySelector('#autoNotesBadge').textContent.trim(),
+      count:[...document.querySelectorAll('.notes')].filter((note) => note.textContent.trim()).length
+    };
+  })()`);
+  assert.equal(smartNotesOn.active, true, 'Smart Notes must visibly switch on');
+  assert.equal(smartNotesOn.pressed, 'true', 'Smart Notes must expose its on state accessibly');
+  assert.match(smartNotesOn.badge, /on/i);
+  assert.ok(smartNotesOn.count > 0, 'Smart Notes must populate candidates');
+  const smartNotesOff = await evaluate(`(() => {
+    document.querySelector('#autoNotesButton').click();
+    return {
+      active:document.querySelector('#autoNotesButton').classList.contains('active'),
+      pressed:document.querySelector('#autoNotesButton').getAttribute('aria-pressed'),
+      badge:document.querySelector('#autoNotesBadge').textContent.trim(),
+      count:[...document.querySelectorAll('.notes')].filter((note) => note.textContent.trim()).length
+    };
+  })()`);
+  assert.equal(smartNotesOff.active, false, 'Smart Notes must switch off');
+  assert.equal(smartNotesOff.pressed, 'false', 'Smart Notes must expose its off state accessibly');
+  assert.match(smartNotesOff.badge, /off/i);
+  assert.equal(smartNotesOff.count, 0, 'Turning Smart Notes off must clear generated candidates');
+
   const notes = await evaluate(`(() => {
     const cell = [...document.querySelectorAll('.cell')].find((item) => !item.classList.contains('given'));
     cell.click(); document.querySelector('#notesButton').click(); document.querySelector('.number-button').click();
@@ -157,6 +199,33 @@ try {
   await evaluate("document.querySelector('#settingsButton').click()");
   await delay(200);
   await screenshot('mobile-edmundas-settings-390x844.png');
+  const lockedNotice = await evaluate(`(() => {
+    const lockedTheme = document.querySelector('.theme-option.locked');
+    const lockedStyle = document.querySelector('.style-option.locked');
+    lockedTheme.click();
+    const toast = document.querySelector('#toast');
+    const dialog = document.querySelector('#settingsDialog');
+    const themeParent = toast.parentElement?.id;
+    const themeMessage = toast.textContent.trim();
+    lockedStyle.click();
+    const rect = toast.getBoundingClientRect();
+    return {
+      themeParent,
+      themeMessage,
+      styleParent:toast.parentElement?.id,
+      styleMessage:toast.textContent.trim(),
+      shown:toast.classList.contains('show'),
+      inViewport:rect.bottom > 0 && rect.top < innerHeight,
+      dialogOpen:dialog.open
+    };
+  })()`);
+  assert.equal(lockedNotice.themeParent, 'settingsDialog', 'Theme notifications must share the dialog top layer');
+  assert.equal(lockedNotice.styleParent, 'settingsDialog', 'Board-style notifications must share the dialog top layer');
+  assert.ok(lockedNotice.themeMessage && lockedNotice.styleMessage, 'Locked customization notifications need visible text');
+  assert.equal(lockedNotice.shown, true, 'A locked theme or style must show a notification');
+  assert.equal(lockedNotice.inViewport, true, 'The settings notification must be inside the viewport');
+  assert.equal(lockedNotice.dialogOpen, true);
+  await screenshot('mobile-settings-notification-390x844.png');
   await evaluate("document.querySelector('.pwa-center').scrollIntoView({block:'center'})");
   await delay(500);
   const pwa = await evaluate(`(() => ({
@@ -174,6 +243,13 @@ try {
   await screenshot('mobile-pwa-center-390x844.png');
 
   await evaluate("document.querySelector('#settingsDialog').close()");
+  const menuReturn = await evaluate(`(() => {
+    document.querySelector('#gameMenuButton').click();
+    const opened = !document.querySelector('#mainMenu').hidden;
+    document.querySelector('#menuContinueButton').click();
+    return { opened, closed:document.querySelector('#mainMenu').hidden };
+  })()`);
+  assert.deepEqual(menuReturn, { opened:true, closed:true }, 'Players must be able to enter and leave the main menu from a game');
   const academy = await evaluate(`(() => {
     document.querySelector('#academyButton').click();
     return { dialog:document.querySelector('#academyDialog').open, lessons:document.querySelectorAll('#academyLessonList button').length, cells:document.querySelectorAll('#academyBoard .academy-cell').length, choices:document.querySelectorAll('#academyChoices button').length };
@@ -227,7 +303,7 @@ try {
   await cdp.call('Emulation.setDeviceMetricsOverride', { width:1440, height:1000, deviceScaleFactor:1, mobile:false });
   await delay(250);
   await screenshot('desktop-gameplay-1440x1000.png');
-  console.log(`Browser smoke passed: Edmundas dedication, notes, hints, PWA, Academy, backup, and responsive layouts.`);
+  console.log(`Browser smoke passed: Edmundas menu, Smart Notes toggle, top-layer notices, hints, PWA, Academy, backup, and responsive layouts.`);
 } finally {
   cdp?.close();
   browser.kill();
