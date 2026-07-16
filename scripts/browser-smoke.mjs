@@ -469,11 +469,138 @@ try {
   await delay(200);
   assert.match(await evaluate("document.querySelector('#backupStatus').textContent"), /cancel/i, 'Validated restore must reach the replacement confirmation');
 
-  await evaluate("document.querySelector('#settingsDialog').close()");
+  await evaluate("document.querySelector('#progressQrButton').click()");
+  await waitFor("document.querySelector('#challengeDialog').open");
+  const progressQr = await evaluate(`(() => ({
+      dialog:document.querySelector('#challengeDialog').open,
+      code:document.querySelector('#transferCode').value,
+      qr:document.querySelectorAll('#qrStage svg rect').length,
+      rulesHidden:document.querySelector('#challengeRules').hidden,
+      openDialogs:[...document.querySelectorAll('dialog[open]')].map((dialog) => dialog.id)
+    }))()`);
+  assert.equal(progressQr.dialog, true, 'Compact progress transfer must open from Settings');
+  assert.match(progressQr.code, /^SDP1\./, 'Progress transfer must use a versioned offline code');
+  assert.ok(progressQr.qr > 100, 'Progress transfer must render a real QR matrix');
+  assert.equal(progressQr.rulesHidden, true);
+  assert.deepEqual(progressQr.openDialogs, ['challengeDialog'], 'QR transfer must own the top layer without another dialog backdrop');
+  await delay(350);
+  await screenshot('mobile-progress-qr-390x844.png');
+  await evaluate("document.querySelector('#challengeImport').click()");
+  await waitFor("!document.querySelector('#challengeDialog').open");
+
+  const solved = await evaluate(`(() => {
+    const game = JSON.parse(localStorage.getItem('sudodoku-game-v1'));
+    if (document.querySelector('#notesButton').classList.contains('active')) document.querySelector('#notesButton').click();
+    game.solution.forEach((value, index) => {
+      const cell = document.querySelectorAll('.cell')[index];
+      if (cell.classList.contains('given') || cell.querySelector('.value')?.textContent.trim() === String(value)) return;
+      cell.click();
+      document.querySelector('.number-button[data-number="' + value + '"]').click();
+    });
+    return true;
+  })()`);
+  assert.equal(solved, true);
+  await waitFor("document.querySelector('#gameDialog').open");
+  const premiumResult = await evaluate(`(() => {
+    const stored = JSON.parse(localStorage.getItem('sudodoku-stats-v1'));
+    return {
+      review:!!stored.lastReview,
+      history:stored.solveHistory.length,
+      rating:stored.rating,
+      grade:stored.lastReview?.grade?.label,
+      reviewButton:!document.querySelector('#reviewButton').hidden,
+      challengeButton:!document.querySelector('#challengeButton').hidden
+    };
+  })()`);
+  assert.equal(premiumResult.review, true, 'Completed puzzles must persist a solve review');
+  assert.ok(premiumResult.history > 0, 'Completed puzzles must enrich solve history');
+  assert.ok(premiumResult.rating > 0, 'Adaptive rating must be stored');
+  assert.ok(['foundation','intermediate','advanced','expert','grandmaster'].includes(premiumResult.grade));
+  assert.equal(premiumResult.reviewButton, true);
+  assert.equal(premiumResult.challengeButton, true);
+
+  await evaluate("document.querySelector('#reviewButton').click()");
+  await waitFor("document.querySelector('#reviewDialog').open");
+  const review = await evaluate(`(() => ({
+    grade:document.querySelector('#reviewGrade').textContent.trim(),
+    summary:document.querySelectorAll('#reviewSummary > div').length,
+    timeline:document.querySelectorAll('#reviewTimeline article').length,
+    practice:!document.querySelector('#reviewPracticeButton').disabled
+  }))()`);
+  assert.ok(review.grade);
+  assert.equal(review.summary, 4, 'Solve review must summarize time, mistakes, hints, and techniques');
+  assert.ok(review.timeline > 0, 'Solve review must expose turning points');
+  assert.equal(review.practice, true, 'A key position must be replayable');
+  await delay(350);
+  await screenshot('mobile-solve-review-390x844.png');
+  await evaluate("document.querySelector('#reviewDialog').close()");
+  await delay(80);
+  await evaluate("document.querySelector('#statsButton').click()");
+  await waitFor("document.querySelector('#statsDialog').open");
+  const premiumStats = await evaluate(`(() => ({
+    rating:document.querySelector('#skillRating').textContent.trim(),
+    calendar:document.querySelectorAll('#puzzleCalendar button').length,
+    journal:document.querySelectorAll('#techniqueJournal article').length,
+    plans:document.querySelectorAll('#practicePlans article').length,
+    heatmap:document.querySelectorAll('#activityHeatmap i').length,
+    overflow:document.querySelector('#statsDialog').scrollWidth > document.querySelector('#statsDialog').clientWidth + 1
+  }))()`);
+  assert.ok(premiumStats.rating);
+  assert.equal(premiumStats.calendar, 42, 'Archive calendar must render six complete weeks');
+  assert.equal(premiumStats.journal, 12, 'Technique Journal must cover every Academy strategy');
+  assert.equal(premiumStats.plans, 5, 'All guided practice paths must be available');
+  assert.equal(premiumStats.heatmap, 56, 'Advanced activity stats must cover eight weeks');
+  assert.equal(premiumStats.overflow, false, 'Premium stats must fit a phone without horizontal overflow');
+  await delay(350);
+  await screenshot('mobile-premium-dashboard-390x844.png');
+  await evaluate("document.querySelector('#puzzleCalendar').scrollIntoView({block:'center'})");
+  await delay(250);
+  await screenshot('mobile-puzzle-archive-390x844.png');
+  await evaluate("document.querySelector('#techniqueJournal').scrollIntoView({block:'center'})");
+  await delay(250);
+  await screenshot('mobile-technique-journal-390x844.png');
+  await evaluate("document.querySelector('#practicePlans article button').click()");
+  assert.equal(await evaluate("JSON.parse(localStorage.getItem('sudodoku-stats-v1')).practicePlan?.id"), 'foundations', 'Practice plan selection must persist locally');
+  await evaluate("document.querySelector('#practicePlans').scrollIntoView({block:'center'})");
+  await delay(650);
+  await screenshot('mobile-practice-plans-390x844.png');
+
+  await evaluate("document.querySelector('#statsDialog').close()");
+  await delay(80);
+  await evaluate("document.querySelector('#challengeButton').click()");
+  await waitFor("document.querySelector('#challengeDialog').open");
+  const challenge = await evaluate(`(() => ({
+    link:document.querySelector('#transferCode').value,
+    qr:document.querySelectorAll('#qrStage svg rect').length,
+    rules:!document.querySelector('#challengeRules').hidden,
+    benchmark:document.querySelector('#transferCode').value.includes('challenge=')
+  }))()`);
+  assert.match(challenge.link, /challenge=SDC1\./, 'Asynchronous challenges must produce a shareable static link');
+  assert.ok(challenge.qr > 100, 'Challenge sharing must render a QR matrix');
+  assert.equal(challenge.rules, true);
+  assert.equal(challenge.benchmark, true);
+  const qrDecode = await evaluate(`(async () => {
+    if (!('BarcodeDetector' in window)) return { supported:false };
+    const formats = await BarcodeDetector.getSupportedFormats();
+    if (!formats.includes('qr_code')) return { supported:false };
+    const svg = document.querySelector('#qrStage svg').outerHTML;
+    const bitmap = await createImageBitmap(new Blob([svg], { type:'image/svg+xml' }));
+    const result = await new BarcodeDetector({ formats:['qr_code'] }).detect(bitmap);
+    bitmap.close();
+    return { supported:true, value:result[0]?.rawValue || '' };
+  })()`, true);
+  if (qrDecode.supported) assert.match(qrDecode.value, /^SDC1\./, 'The generated challenge QR must decode to its offline code');
+  await delay(350);
+  await screenshot('mobile-friend-challenge-390x844.png');
+  await evaluate("document.querySelector('#challengeImport').click()");
+  await waitFor("!document.querySelector('#challengeDialog').open && JSON.parse(localStorage.getItem('sudodoku-game-v1') || 'null')?.challenge");
+  assert.equal(await evaluate("!!JSON.parse(localStorage.getItem('sudodoku-game-v1') || 'null')?.challenge"), true, 'Challenge links must start the exact constrained puzzle');
+  assert.equal(await evaluate("!document.querySelector('#challengeStrip').hidden && document.querySelector('#challengeRuleSummary').textContent.includes('3')"), true, 'Active challenge restrictions must remain visible during play');
+
   await cdp.call('Emulation.setDeviceMetricsOverride', { width:1440, height:1000, deviceScaleFactor:1, mobile:false });
   await delay(250);
   await screenshot('desktop-gameplay-1440x1000.png');
-  console.log(`Browser smoke passed: neutral returning-player menu, Edmundas dedication, Smart Notes, hints, PWA, Academy, backup, and responsive layouts.`);
+  console.log(`Browser smoke passed: responsive gameplay, Academy, premium review/stats/plans, challenge links, QR transfer, PWA, and backup.`);
 } finally {
   cdp?.close();
   browser.kill();

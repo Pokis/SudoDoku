@@ -1,8 +1,8 @@
-const VERSION = 'v19';
+const VERSION = 'v20';
 const CACHE = `sudodoku-${VERSION}`;
 const CORE = [
   './', './index.html', './styles.css', './manifest.webmanifest',
-  './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './src/app.js', './src/sudoku.js', './src/techniques.js', './src/academy.js', './src/backup.js', './src/i18n.js',
+  './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './src/app.js', './src/sudoku.js', './src/techniques.js', './src/academy.js', './src/backup.js', './src/i18n.js', './src/premium.js', './src/qr.js',
 ];
 
 self.addEventListener('install', (event) => {

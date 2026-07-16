@@ -8,10 +8,19 @@
   "orientation": "any",
   "background_color": "#f6f4ff",
   "theme_color": "#6d5dfc",
+  "share_target": {
+    "action": "./?view=challenge",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {"title":"share_title","text":"share_text","url":"share_url"}
+  },
   "shortcuts": [
     {"name":"Daily challenge","short_name":"Daily","description":"Open today’s seeded challenge","url":"./?mode=daily","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]},
     {"name":"Mini 6×6","short_name":"Mini","description":"Start a quick compact puzzle","url":"./?mode=mini","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]},
-    {"name":"Killer Sudoku","short_name":"Killer","description":"Start a cage-and-sums puzzle","url":"./?mode=killer","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]}
+    {"name":"Killer Sudoku","short_name":"Killer","description":"Start a cage-and-sums puzzle","url":"./?mode=killer","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]},
+    {"name":"Technique Academy","short_name":"Academy","description":"Practice solving techniques","url":"./?view=academy","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]},
+    {"name":"Progress dashboard","short_name":"Progress","description":"Open ratings, plans, archive, and statistics","url":"./?view=stats","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]},
+    {"name":"Challenge a friend","short_name":"Challenge","description":"Create an offline-friendly puzzle challenge","url":"./?view=challenge","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]}
   ],
   "icons": [
     {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},

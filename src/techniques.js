@@ -16,10 +16,10 @@ export function buildCandidateMap(board, variant = 'classic') {
   return board.map((value, index) => value ? [] : getCandidates(board, index, variant));
 }
 
-export function findTechniqueHint(board, solution, variant = 'classic', preferredTechnique = null) {
+export function findTechniqueHint(board, solution, variant = 'classic', preferredTechnique = null, candidateOverride = null) {
   const { size } = getVariantConfig(variant);
   const units = getUnits(variant);
-  const candidateMap = buildCandidateMap(board, variant);
+  const candidateMap = candidateOverride || buildCandidateMap(board, variant);
 
   for (let index = 0; index < board.length; index += 1) {
     if (!board[index] && candidateMap[index].length === 1) {

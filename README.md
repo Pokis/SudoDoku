@@ -14,8 +14,11 @@ A polished, installable Sudoku game that runs entirely in the browser. Sudodoku 
 - A quick Sudoku rules primer and 12-lesson Technique Academy covering singles, locked candidates, pairs, triples, fish patterns, XY-Wing, and Skyscraper
 - Classic, Killer, Hyper, Mini 6×6, Zen, and deterministic Daily modes
 - Weekly quests, XP levels, replay timelines, generated result cards, and unlockable visual styles
+- Technique-based puzzle grading, adaptive skill ratings, solve reviews, turning-point practice, and a persistent Technique Journal
+- An eight-week activity dashboard, per-difficulty performance, a replayable Daily archive, guided practice plans, and earned streak shields
+- Offline asynchronous challenge links with custom rules, benchmark comparison, QR sharing, and compact progress QR transfer
 - Responsive layout, reduced-motion support, light/dark themes, and subtle sound effects
-- Installable PWA with full offline support and an explicit install button throughout the app
+- Installable PWA with full offline support, explicit install controls, app badges, share-target support, and richer shortcuts
 
 ## Run locally
 

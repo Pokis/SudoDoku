@@ -1,8 +1,10 @@
-import { createSeededRandom, generatePuzzle, getCandidates, getHyperRegion, getPeers, getVariantConfig, isComplete, shuffled } from './sudoku.js';
+import { countSolutions, createSeededRandom, generatePuzzle, getCandidates, getHyperRegion, getPeers, getVariantConfig, isComplete, shuffled } from './sudoku.js';
 import { applyDocumentTranslations, LOCALES, translate } from './i18n.js';
 import { buildCandidateMap, findTechniqueHint } from './techniques.js';
 import { ACADEMY_LESSONS, getAcademyLesson, isAcademyAnswer } from './academy.js';
 import { createBackupPayload, validateBackupPayload } from './backup.js';
+import { calculateRatingUpdate, createPracticePlan, decodeChallenge, decodeProgressSnapshot, encodeChallenge, encodeProgressSnapshot, gradePuzzleByTechniques, PRACTICE_PLANS, practiceTaskProgress, recommendDifficulty, recordPracticeEvent, TECHNIQUE_TIERS } from './premium.js';
+import { createQrSvg, scanQrFile } from './qr.js';
 
 const $ = (selector) => document.querySelector(selector);
 const STORAGE_KEY = 'sudodoku-game-v1';
@@ -10,11 +12,12 @@ const PREFS_KEY = 'sudodoku-prefs-v1';
 const STATS_KEY = 'sudodoku-stats-v1';
 
 const elements = {
-  board: $('#board'), numpad: $('#numpad'), timer: $('#timer'), mistakes: $('#mistakeCount'),
+  board: $('#board'), numpad: $('#numpad'), timer: $('#timer'), mistakes: $('#mistakeCount'), mistakeLimit: $('#mistakeLimit'),
   difficultyLabel: $('#difficultyLabel'), difficultyButton: $('#difficultyButton'), difficultyMenu: $('#difficultyMenu'), modeButton: $('#modeButton'), modeMenu: $('#modeMenu'),
   pauseButton: $('#pauseButton'), resumeButton: $('#resumeButton'), notesButton: $('#notesButton'), notesBadge: $('#notesBadge'),
   undoButton: $('#undoButton'), eraseButton: $('#eraseButton'), autoNotesButton: $('#autoNotesButton'), autoNotesBadge: $('#autoNotesBadge'), hintButton: $('#hintButton'), hintCount: $('#hintCount'),
   hintCoach: $('#hintCoach'), hintCoachTitle: $('#hintCoachTitle'), hintCoachText: $('#hintCoachText'), hintCoachClose: $('#hintCoachClose'),
+  challengeStrip: $('#challengeStrip'), challengeRuleSummary: $('#challengeRuleSummary'),
   newGameButton: $('#newGameButton'), progressRing: $('#progressRing'), progressPercent: $('#progressPercent'), progressText: $('#progressText'),
   themeButton: $('#themeButton'), soundButton: $('#soundButton'), statsButton: $('#statsButton'), modeChip: $('#modeChip'),
   settingsButton: $('#settingsButton'), homeButton: $('#homeButton'), gameMenuButton: $('#gameMenuButton'),
@@ -22,10 +25,12 @@ const elements = {
   dailyButton: $('#dailyButton'), dailyTitle: $('#dailyTitle'), dailySubtitle: $('#dailySubtitle'),
   dialog: $('#gameDialog'), dialogEyebrow: $('#dialogEyebrow'), dialogTitle: $('#dialogTitle'), dialogText: $('#dialogText'),
   resultGrid: $('#resultGrid'), resultTime: $('#resultTime'), resultMistakes: $('#resultMistakes'), resultScore: $('#resultScore'),
-  unlockBanner: $('#unlockBanner'), unlockText: $('#unlockText'), dialogAction: $('#dialogAction'), dialogClose: $('#dialogClose'), shareResultButton: $('#shareResultButton'),
+  unlockBanner: $('#unlockBanner'), unlockText: $('#unlockText'), dialogAction: $('#dialogAction'), dialogClose: $('#dialogClose'), shareResultButton: $('#shareResultButton'), reviewButton: $('#reviewButton'), challengeButton: $('#challengeButton'),
   statsDialog: $('#statsDialog'), statsClose: $('#statsClose'), statsPlay: $('#statsPlay'),
   statPlayed: $('#statPlayed'), statWon: $('#statWon'), statStreak: $('#statStreak'), statBest: $('#statBest'),
   statPoints: $('#statPoints'), statDaily: $('#statDaily'), achievementList: $('#achievementList'), achievementCount: $('#achievementCount'), achievementHistoryList: $('#achievementHistoryList'), achievementHistoryCount: $('#achievementHistoryCount'), toast: $('#toast'),
+  skillRating: $('#skillRating'), skillRatingTrend: $('#skillRatingTrend'), recommendedDifficulty: $('#recommendedDifficulty'), ratingPeak: $('#ratingPeak'), shieldCount: $('#shieldCount'), activityHeatmap: $('#activityHeatmap'), activitySummary: $('#activitySummary'), difficultyDashboard: $('#difficultyDashboard'),
+  calendarTitle: $('#calendarTitle'), calendarPrevious: $('#calendarPrevious'), calendarNext: $('#calendarNext'), calendarWeekdays: $('#calendarWeekdays'), puzzleCalendar: $('#puzzleCalendar'), journalSummary: $('#journalSummary'), techniqueJournal: $('#techniqueJournal'), practicePlanStatus: $('#practicePlanStatus'), practicePlans: $('#practicePlans'),
   settingsDialog: $('#settingsDialog'), settingsClose: $('#settingsClose'), settingsDone: $('#settingsDone'),
   settingsLanguage: $('#settingsLanguage'), hapticsToggle: $('#hapticsToggle'), autoPauseToggle: $('#autoPauseToggle'), replayIntroButton: $('#replayIntroButton'),
   themeGrid: $('#themeGrid'), boardStyleGrid: $('#boardStyleGrid'),
@@ -34,8 +39,10 @@ const elements = {
   introScreen: $('#introScreen'), languageLaunch: $('#languageLaunch'), introCard: $('#introCard'), languageChoiceGrid: $('#languageChoiceGrid'), languageLaunchCurrent: $('#languageLaunchCurrent'), languageContinue: $('#languageContinue'), introLanguage: $('#introLanguage'), introStart: $('#introStart'), miniBoard: $('#miniBoard'),
   replayButton: $('#replayButton'), replayDialog: $('#replayDialog'), replayClose: $('#replayClose'), replayBoard: $('#replayBoard'), replayRange: $('#replayRange'), replayPlay: $('#replayPlay'), replayStep: $('#replayStep'), replayCaption: $('#replayCaption'),
   academyButton: $('#academyButton'), academySettingsButton: $('#academySettingsButton'), academyDialog: $('#academyDialog'), academyClose: $('#academyClose'), academyCardProgress: $('#academyCardProgress'), academySettingsProgress: $('#academySettingsProgress'), academyCompleteCount: $('#academyCompleteCount'), academyProgressBar: $('#academyProgressBar'), academyLessonList: $('#academyLessonList'), academyStage: $('#academyStage'), academyRules: $('#academyRules'), academyRulesStart: $('#academyRulesStart'), academyLessonLevel: $('#academyLessonLevel'), academyLessonReward: $('#academyLessonReward'), academyLessonTitle: $('#academyLessonTitle'), academyLessonIntro: $('#academyLessonIntro'), academyBoard: $('#academyBoard'), academySteps: $('#academySteps'), academyQuestion: $('#academyQuestion'), academyChoices: $('#academyChoices'), academyFeedback: $('#academyFeedback'), academyNextButton: $('#academyNextButton'),
-  backupSummary: $('#backupSummary'), backupStatus: $('#backupStatus'), backupExportButton: $('#backupExportButton'), backupRestoreButton: $('#backupRestoreButton'), backupFileInput: $('#backupFileInput'),
-  mainMenu: $('#mainMenu'), menuContinueButton: $('#menuContinueButton'), menuContinueTitle: $('#menuContinueTitle'), menuContinueProgress: $('#menuContinueProgress'), menuLevel: $('#menuLevel'), menuPoints: $('#menuPoints'), menuAchievements: $('#menuAchievements'), menuLessons: $('#menuLessons'), menuAcademyButton: $('#menuAcademyButton'), menuStatsButton: $('#menuStatsButton'), menuSettingsButton: $('#menuSettingsButton'),
+  backupSummary: $('#backupSummary'), backupStatus: $('#backupStatus'), backupExportButton: $('#backupExportButton'), backupRestoreButton: $('#backupRestoreButton'), backupFileInput: $('#backupFileInput'), progressQrButton: $('#progressQrButton'),
+  reviewDialog: $('#reviewDialog'), reviewClose: $('#reviewClose'), reviewGrade: $('#reviewGrade'), reviewGradeText: $('#reviewGradeText'), reviewRatingChange: $('#reviewRatingChange'), reviewSummary: $('#reviewSummary'), reviewTimeline: $('#reviewTimeline'), reviewTip: $('#reviewTip'), reviewPracticeButton: $('#reviewPracticeButton'),
+  challengeDialog: $('#challengeDialog'), challengeClose: $('#challengeClose'), challengeEyebrow: $('#challengeEyebrow'), challengeTitle: $('#challengeTitle'), challengeLead: $('#challengeLead'), challengeRules: $('#challengeRules'), challengeMistakes: $('#challengeMistakes'), challengeHints: $('#challengeHints'), challengeTime: $('#challengeTime'), challengeNotes: $('#challengeNotes'), qrStage: $('#qrStage'), transferCode: $('#transferCode'), challengeCopy: $('#challengeCopy'), challengeShare: $('#challengeShare'), challengeImport: $('#challengeImport'), challengeScan: $('#challengeScan'), challengeScanFile: $('#challengeScanFile'), challengeStatus: $('#challengeStatus'),
+  mainMenu: $('#mainMenu'), menuContinueButton: $('#menuContinueButton'), menuContinueTitle: $('#menuContinueTitle'), menuContinueProgress: $('#menuContinueProgress'), menuLevel: $('#menuLevel'), menuPoints: $('#menuPoints'), menuRating: $('#menuRating'), menuShields: $('#menuShields'), menuAchievements: $('#menuAchievements'), menuLessons: $('#menuLessons'), menuAcademyButton: $('#menuAcademyButton'), menuChallengeButton: $('#menuChallengeButton'), menuStatsButton: $('#menuStatsButton'), menuSettingsButton: $('#menuSettingsButton'),
 };
 
 const modeWins = (summary, mode) => Number(summary.modeWins?.[mode] || 0);
@@ -94,6 +101,8 @@ const defaultStats = {
   currentPerfectStreak:0, bestPerfectStreak:0, modeWins:{ classic:0, daily:0, killer:0, hyper:0, mini:0, zen:0 },
   nightWins:0, closeCallWins:0, noPencilWins:0, patientWins:0, achievementHistory:[], nearNotified:[],
   academyCompleted:[], techniquesDiscovered:[], logicalHints:0,
+  rating:1000, ratingPeak:1000, solveHistory:[], dailyRecords:{}, techniqueJournal:{},
+  practicePlan:null, practicePlansCompleted:[], streakShields:0, shieldMilestone:0, protectedDays:[], lastReview:null,
 };
 const browserLanguage = navigator.language?.split('-')[0];
 const defaultPrefs = { theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', palette: 'lavender', boardStyle: 'classic', sound: true, language: LOCALES.some(({ code }) => code === browserLanguage) ? browserLanguage : 'en', haptics: true, autoPause: true, onboarded: false, languageConfirmed: false, academyRulesSeen: false };
@@ -108,6 +117,14 @@ stats.techniquesDiscovered = Array.isArray(stats.techniquesDiscovered) ? [...new
 stats.best = stats.best && typeof stats.best === 'object' ? stats.best : {};
 stats.bestByMode = { ...defaultStats.bestByMode, ...(stats.bestByMode && typeof stats.bestByMode === 'object' ? stats.bestByMode : {}) };
 stats.modeWins = { ...defaultStats.modeWins, ...(stats.modeWins && typeof stats.modeWins === 'object' ? stats.modeWins : {}) };
+stats.solveHistory = Array.isArray(stats.solveHistory) ? stats.solveHistory : [];
+stats.dailyRecords = stats.dailyRecords && typeof stats.dailyRecords === 'object' ? stats.dailyRecords : {};
+stats.techniqueJournal = stats.techniqueJournal && typeof stats.techniqueJournal === 'object' ? stats.techniqueJournal : {};
+stats.practicePlansCompleted = Array.isArray(stats.practicePlansCompleted) ? stats.practicePlansCompleted : [];
+stats.protectedDays = Array.isArray(stats.protectedDays) ? stats.protectedDays : [];
+stats.rating = Math.max(400, Number(stats.rating || 1000));
+stats.ratingPeak = Math.max(stats.rating, Number(stats.ratingPeak || stats.rating));
+stats.streakShields = Math.max(0, Math.min(3, Number(stats.streakShields || 0)));
 let state;
 let timerId;
 let toastId;
@@ -120,6 +137,13 @@ let deferredInstallPrompt;
 let updateRequested = false;
 let academyCurrentLesson = prefs.academyRulesSeen ? ACADEMY_LESSONS[0].id : 'rules';
 let pendingAcademyEvents = [];
+let calendarCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let transferMode = 'challenge';
+let activeTransferValue = '';
+let reviewPracticeInsight = null;
+let pendingLaunchView = null;
+let incomingTransferCode = null;
+let challengeReturnToMenu = false;
 
 const t = (key, variables) => translate(prefs.language, key, variables);
 
@@ -135,7 +159,9 @@ function freshState(difficulty = 'medium', options = {}) {
   const random = options.seed ? createSeededRandom(options.seed) : Math.random;
   const mode = options.mode || 'classic';
   const variant = options.variant || (mode === 'hyper' ? 'hyper' : mode === 'mini' ? 'mini' : 'classic');
-  const generated = generatePuzzle(difficulty, random, variant);
+  const generated = options.puzzle && options.solution
+    ? { puzzle:[...options.puzzle], solution:[...options.solution], difficulty }
+    : generatePuzzle(difficulty, random, variant);
   const { size, boxRows, boxCols } = getVariantConfig(variant);
   return {
     ...generated,
@@ -143,7 +169,7 @@ function freshState(difficulty = 'medium', options = {}) {
     notes: Array.from({ length: generated.puzzle.length }, () => []),
     selected: generated.puzzle.findIndex((value) => !value),
     mistakes: 0,
-    hints: 3,
+    hints: options.challenge ? options.challenge.maxHints : 3,
     hintsUsed: 0,
     autoNotesUsed: false,
     smartNotesActive: false,
@@ -162,12 +188,15 @@ function freshState(difficulty = 'medium', options = {}) {
     status: 'playing',
     history: [],
     replay: [],
+    insights: [],
+    grade:gradePuzzleByTechniques(generated.puzzle, generated.solution, variant),
+    challenge:options.challenge || null,
     startedAt: Date.now(),
   };
 }
 
-function dailyConfig() {
-  const today = dateKey();
+function dailyConfig(requestedDate = dateKey()) {
+  const today = requestedDate;
   const rotation = ['medium', 'hard', 'medium', 'expert', 'hard', 'easy', 'hard'];
   const dayNumber = Math.floor(new Date(`${today}T12:00:00`).getTime() / 86400000);
   return { date: today, difficulty: rotation[dayNumber % rotation.length], seed: `sudodoku-daily-${today}` };
@@ -268,6 +297,20 @@ function sanitizeBackupStats(raw) {
   safe.bestByMode = Object.fromEntries(Object.entries(raw.bestByMode || {}).filter(([, value]) => Number.isFinite(value) && value >= 0));
   safe.modeWins = { ...defaultStats.modeWins };
   Object.keys(safe.modeWins).forEach((mode) => { if (Number.isFinite(raw.modeWins?.[mode]) && raw.modeWins[mode] >= 0) safe.modeWins[mode] = raw.modeWins[mode]; });
+  safe.solveHistory = Array.isArray(raw.solveHistory) ? raw.solveHistory.filter((entry) => entry && Number.isFinite(Date.parse(entry.date)) && ['easy','medium','hard','expert'].includes(entry.difficulty)).slice(-300) : [];
+  safe.dailyRecords = raw.dailyRecords && typeof raw.dailyRecords === 'object' && !Array.isArray(raw.dailyRecords) ? Object.fromEntries(Object.entries(raw.dailyRecords).filter(([key, value]) => /^\d{4}-\d{2}-\d{2}$/.test(key) && value && typeof value === 'object').slice(-1000)) : {};
+  safe.techniqueJournal = {};
+  ACADEMY_LESSONS.forEach(({ id }) => {
+    const entry = raw.techniqueJournal?.[id];
+    if (!entry || typeof entry !== 'object') return;
+    safe.techniqueJournal[id] = {};
+    ['seen','solved','hints','academy'].forEach((key) => { safe.techniqueJournal[id][key] = Math.max(0, Number(entry[key] || 0)); });
+    safe.techniqueJournal[id].lastSeen = Number.isFinite(Date.parse(entry.lastSeen)) ? entry.lastSeen : null;
+  });
+  safe.practicePlan = raw.practicePlan && PRACTICE_PLANS.some(({ id }) => id === raw.practicePlan.id) ? raw.practicePlan : null;
+  safe.practicePlansCompleted = Array.isArray(raw.practicePlansCompleted) ? raw.practicePlansCompleted.filter((id) => PRACTICE_PLANS.some((plan) => plan.id === id)) : [];
+  safe.protectedDays = Array.isArray(raw.protectedDays) ? raw.protectedDays.filter((key) => /^\d{4}-\d{2}-\d{2}$/.test(key)).slice(-1000) : [];
+  safe.lastReview = raw.lastReview && Array.isArray(raw.lastReview.puzzle) && Array.isArray(raw.lastReview.solution) ? raw.lastReview : null;
   const weekly = raw.weekly;
   if (weekly && typeof weekly === 'object' && !Array.isArray(weekly) && typeof weekly.key === 'string' && ['complete','logic','variants','daily'].includes(weekly.questId)) {
     safe.weekly = { key:weekly.key, questId:weekly.questId, completedGames:0, noHintWins:0, variantWins:0, dailyWins:0, claimed:weekly.claimed === true };
@@ -436,6 +479,7 @@ function finishIntro() {
   elements.introScreen.hidden = true;
   document.body.classList.remove('onboarding-open');
   elements.board.querySelector('.cell:not(.given)')?.focus({ preventScroll: true });
+  handleLaunchView();
 }
 
 function haptic(duration = 25) {
@@ -542,9 +586,11 @@ function render() {
 
   elements.timer.textContent = state.mode === 'zen' ? '∞' : formatTime(state.seconds);
   elements.mistakes.textContent = state.mistakes;
+  elements.mistakeLimit.textContent = state.challenge?.maxMistakes || 3;
   elements.hintCount.textContent = state.hints;
   elements.hintButton.disabled = state.hints <= 0;
-  elements.autoNotesButton.disabled = state.paused;
+  elements.autoNotesButton.disabled = state.paused || Boolean(state.challenge && !state.challenge.notesAllowed);
+  elements.notesButton.disabled = Boolean(state.challenge && !state.challenge.notesAllowed);
   elements.undoButton.disabled = !state.history.length;
   elements.difficultyLabel.textContent = t(`difficulty.${state.difficulty}`);
   elements.modeChip.textContent = t(`mode.${state.mode}`);
@@ -558,6 +604,16 @@ function render() {
   if (state.lastHint) {
     elements.hintCoachTitle.textContent = t(`technique.${state.lastHint.technique}.title`, state.lastHint);
     elements.hintCoachText.textContent = t(`technique.${state.lastHint.technique}.text`, state.lastHint);
+  }
+  elements.challengeStrip.hidden = !state.challenge;
+  if (state.challenge) {
+    const rules = [
+      t('challenge.ruleMistakes', { count:state.challenge.maxMistakes }),
+      t('challenge.ruleHints', { count:state.challenge.maxHints }),
+      t(state.challenge.notesAllowed ? 'challenge.ruleNotes' : 'challenge.ruleNoNotes'),
+    ];
+    if (state.challenge.timeLimit) rules.push(t('challenge.ruleTime', { time:formatTime(state.challenge.timeLimit) }));
+    elements.challengeRuleSummary.textContent = rules.join(' · ');
   }
   document.body.classList.toggle('paused', state.paused);
   document.body.classList.toggle('zen-mode', state.mode === 'zen');
@@ -594,9 +650,44 @@ function recordReplay(type, details = {}) {
   state.replay.push({ type, seconds: state.seconds, ...details });
 }
 
+function recordTechniqueActivity(technique, source = 'seen') {
+  if (!technique || technique === 'reveal') return;
+  const previous = stats.techniqueJournal[technique] || { seen:0, solved:0, hints:0, academy:0, lastSeen:null };
+  const next = { ...previous, seen:Number(previous.seen || 0) + 1, lastSeen:new Date().toISOString() };
+  next[source] = Number(next[source] || 0) + 1;
+  stats.techniqueJournal[technique] = next;
+  if (!stats.techniquesDiscovered.includes(technique)) stats.techniquesDiscovered.push(technique);
+  updatePracticeProgress({ type:'technique', id:technique });
+}
+
+function updatePracticeProgress(event) {
+  if (!stats.practicePlan) return;
+  const result = recordPracticeEvent(stats.practicePlan, event);
+  stats.practicePlan = result.plan;
+  if (!result.completedNow) return;
+  const definition = PRACTICE_PLANS.find(({ id }) => id === stats.practicePlan.id);
+  if (definition) {
+    stats.points += definition.reward;
+    if (!stats.practicePlansCompleted.includes(definition.id)) stats.practicePlansCompleted.push(definition.id);
+    queueProgressEvents([{ className:'theme-event', icon:'◎', label:t('plans.completed'), title:t(definition.titleKey), description:t('plans.reward', { points:definition.reward }) }]);
+  }
+}
+
+function addSolveInsight(type, details = {}) {
+  state.insights ||= [];
+  state.insights.push({ type, seconds:state.seconds, ...details });
+  if (state.insights.length > 160) state.insights.shift();
+}
+
 function enterNumber(number) {
   const index = state.selected;
   if (state.paused || state.status !== 'playing' || index < 0 || state.puzzle[index]) return;
+  if (state.notesMode && state.challenge && !state.challenge.notesAllowed) {
+    showToast(t('challenge.notesDisabled'));
+    return;
+  }
+  const logicalBoard = state.values.map((value, position) => value === state.solution[position] ? value : 0);
+  const logicalHint = !state.notesMode ? findTechniqueHint(logicalBoard, state.solution, state.variant) : null;
   pushHistory();
   state.lastHint = null;
   if (state.notesMode && !state.values[index]) {
@@ -610,14 +701,19 @@ function enterNumber(number) {
     state.values[index] = number;
     state.notes[index] = [];
     if (number !== state.solution[index]) {
+      addSolveInsight('mistake', { index, value:number, expected:state.solution[index], board:logicalBoard });
       if (state.mode === 'zen') tone(350, .06);
       else {
         state.mistakes += 1;
         tone(145, .12, 'sawtooth');
         cells[index].animate([{ transform: 'translateX(-3px)' }, { transform: 'translateX(3px)' }, { transform: 'translateX(0)' }], { duration: 210, iterations: 2 });
-        if (state.mistakes >= 3) { recordReplay('value', { index, value: number }); render(); return endGame(false); }
+        const mistakeLimit = state.challenge?.maxMistakes || 3;
+        if (state.mistakes >= mistakeLimit) { recordReplay('value', { index, value: number }); render(); return endGame(false); }
       }
     } else {
+      const technique = logicalHint?.index === index && logicalHint?.value === number ? logicalHint.technique : null;
+      addSolveInsight('move', { index, value:number, technique, board:logicalBoard });
+      if (technique) recordTechniqueActivity(technique, 'solved');
       getPeers(index, state.variant).forEach((peer) => { state.notes[peer] = state.notes[peer].filter((item) => item !== number); });
       tone(620, .055);
     }
@@ -659,6 +755,10 @@ function useHint() {
   const logicalBoard = state.values.map((value, index) => value === state.solution[index] ? value : 0);
   let hint = findTechniqueHint(logicalBoard, state.solution, state.variant);
   if (!hint) return;
+  if (state.challenge && !state.challenge.notesAllowed && !(hint.index >= 0 && hint.value)) {
+    const index = logicalBoard.findIndex((value, position) => value !== state.solution[position]);
+    hint = { technique:'reveal', index, value:state.solution[index], cells:[index], eliminations:[] };
+  }
   const signature = `${hint.technique}:${(hint.cells || []).join('-')}:${hint.value || (hint.pair || []).join('-')}`;
   state.seenTechniqueSignatures ||= [];
   if (state.seenTechniqueSignatures.includes(signature)) {
@@ -694,10 +794,11 @@ function useHint() {
   }
   state.hints -= 1;
   state.hintsUsed = (state.hintsUsed || 0) + 1;
+  addSolveInsight('hint', { index:hint.index ?? hint.cells?.[0], value:hint.value, technique:hint.technique, board:logicalBoard });
   if (hint.technique !== 'reveal') {
     const level = playerLevel();
     stats.logicalHints = Number(stats.logicalHints || 0) + 1;
-    if (!stats.techniquesDiscovered.includes(hint.technique)) stats.techniquesDiscovered.push(hint.technique);
+    recordTechniqueActivity(hint.technique, 'hints');
     const unlocked = unlockAchievements();
     saveStats();
     if (unlocked.length) {
@@ -729,6 +830,7 @@ function refreshSmartNotes() {
 
 function toggleSmartNotes() {
   if (state.paused || state.status !== 'playing') return;
+  if (state.challenge && !state.challenge.notesAllowed) return showToast(t('challenge.notesDisabled'));
   pushHistory();
   state.lastHint = null;
   if (state.smartNotesActive) {
@@ -759,18 +861,52 @@ function setPaused(paused) {
 
 function toggleNotes() {
   if (state.paused) return;
+  if (state.challenge && !state.challenge.notesAllowed) return showToast(t('challenge.notesDisabled'));
   state.notesMode = !state.notesMode;
   tone(state.notesMode ? 560 : 350, .04); render(); save();
 }
 
-function updateStreak() {
-  const today = new Date();
-  const todayKey = dateKey(today);
-  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-  const yesterdayKey = dateKey(yesterday);
-  if (stats.lastWin !== todayKey) stats.streak = stats.lastWin === yesterdayKey ? stats.streak + 1 : 1;
-  stats.lastWin = todayKey;
-  stats.maxDailyStreak = Math.max(Number(stats.maxDailyStreak || 0), stats.streak);
+function addDays(key, amount) {
+  const date = new Date(`${key}T12:00:00`);
+  date.setDate(date.getDate() + amount);
+  return dateKey(date);
+}
+
+function recalculateDailyStreak() {
+  const covered = new Set([...(stats.dailyCompleted || []), ...(stats.protectedDays || [])]);
+  let cursor = dateKey();
+  if (!covered.has(cursor)) cursor = addDays(cursor, -1);
+  let streak = 0;
+  while (covered.has(cursor) && streak < 4000) {
+    streak += 1;
+    cursor = addDays(cursor, -1);
+  }
+  stats.streak = streak;
+  stats.maxDailyStreak = Math.max(Number(stats.maxDailyStreak || 0), streak);
+}
+
+function updateStreak(completedDate) {
+  const completed = [...new Set(stats.dailyCompleted || [])].sort();
+  const previous = completed.filter((key) => key < completedDate).at(-1);
+  if (previous) {
+    const missing = [];
+    let cursor = addDays(previous, 1);
+    while (cursor < completedDate) {
+      if (!stats.dailyCompleted.includes(cursor) && !stats.protectedDays.includes(cursor)) missing.push(cursor);
+      cursor = addDays(cursor, 1);
+    }
+    if (missing.length <= stats.streakShields) {
+      stats.protectedDays.push(...missing);
+      stats.streakShields -= missing.length;
+    }
+  }
+  const milestone = Math.floor(stats.dailyCompleted.length / 7);
+  if (milestone > Number(stats.shieldMilestone || 0)) {
+    stats.streakShields = Math.min(3, stats.streakShields + milestone - Number(stats.shieldMilestone || 0));
+    stats.shieldMilestone = milestone;
+  }
+  stats.lastWin = completedDate;
+  recalculateDailyStreak();
 }
 
 function focusScore() {
@@ -926,6 +1062,23 @@ function recordLifetimeResult(won) {
   }
 }
 
+function createSolveReview(won, ratingChange) {
+  const insights = Array.isArray(state.insights) ? state.insights : [];
+  const turningPoints = insights.filter((entry) => entry.type !== 'move' || (TECHNIQUE_TIERS[entry.technique] || 0) >= 2).slice(-10);
+  const techniqueCounts = insights.reduce((result, entry) => {
+    if (entry.technique && entry.technique !== 'reveal') result[entry.technique] = (result[entry.technique] || 0) + 1;
+    return result;
+  }, {});
+  const hardest = Object.keys(techniqueCounts).sort((first, second) => (TECHNIQUE_TIERS[second] || 0) - (TECHNIQUE_TIERS[first] || 0))[0] || state.grade?.hardestTechnique || 'nakedSingle';
+  return {
+    won,
+    createdAt:new Date().toISOString(),
+    puzzle:[...state.puzzle], solution:[...state.solution], variant:state.variant, mode:state.mode, difficulty:state.difficulty,
+    seconds:state.seconds, mistakes:state.mistakes, hintsUsed:Number(state.hintsUsed || 0), grade:state.grade,
+    ratingChange, insights, turningPoints, techniqueCounts, hardest,
+  };
+}
+
 function endGame(won) {
   const levelBefore = playerLevel();
   state.status = won ? 'won' : 'lost';
@@ -935,13 +1088,14 @@ function endGame(won) {
   if (won) {
     stats.won += 1;
     if (state.mode === 'daily') {
-      updateStreak();
       if (!stats.dailyCompleted.includes(state.dailyDate)) stats.dailyCompleted.push(state.dailyDate);
+      updateStreak(state.dailyDate);
     }
     const best = stats.best[state.difficulty];
     if (state.mode !== 'zen' && (!Number.isFinite(best) || state.seconds < best)) stats.best[state.difficulty] = state.seconds;
     const score = focusScore();
     stats.points += score;
+    updatePracticeProgress({ type:'win', mode:state.mode, difficulty:state.difficulty, mistakes:state.mistakes, manualNotesUsed:state.manualNotesUsed, autoNotesUsed:state.autoNotesUsed, hintsUsed:state.hintsUsed });
     const questCompleted = recordWeeklyWin();
     const unlocked = unlockAchievements();
     const near = collectNearAchievements();
@@ -949,6 +1103,10 @@ function endGame(won) {
     elements.dialogEyebrow.textContent = t(state.mode === 'daily' ? 'result.dailyComplete' : 'result.complete');
     elements.dialogTitle.textContent = t(state.mistakes === 0 ? 'result.flawless' : 'result.beautiful');
     elements.dialogText.textContent = t(state.mode === 'daily' ? 'result.dailyText' : 'result.completeText');
+    if (state.challenge?.benchmark?.seconds) {
+      const difference = state.challenge.benchmark.seconds - state.seconds;
+      elements.dialogText.textContent += ` ${t(difference >= 0 ? 'challenge.beatBenchmark' : 'challenge.benchmarkResult', { time:formatTime(Math.abs(difference)) })}`;
+    }
     elements.resultGrid.hidden = false;
     elements.resultTime.textContent = formatTime(state.seconds);
     elements.resultMistakes.textContent = state.mistakes;
@@ -969,6 +1127,27 @@ function endGame(won) {
     elements.shareResultButton.hidden = true;
     elements.unlockBanner.hidden = true;
   }
+  const ratingChange = calculateRatingUpdate(stats.rating, {
+    won, difficulty:state.difficulty, grade:state.grade || gradePuzzleByTechniques(state.puzzle, state.solution, state.variant),
+    mistakes:state.mistakes, hints:state.hintsUsed, seconds:state.seconds, mode:state.mode,
+  });
+  stats.rating = ratingChange.after;
+  stats.ratingPeak = Math.max(Number(stats.ratingPeak || 1000), stats.rating);
+  state.ratingChange = ratingChange;
+  const review = createSolveReview(won, ratingChange);
+  stats.lastReview = review;
+  stats.solveHistory.push({
+    date:new Date().toISOString(), won, seconds:state.seconds, mistakes:state.mistakes, hints:Number(state.hintsUsed || 0),
+    difficulty:state.difficulty, mode:state.mode, grade:review.grade?.label || 'foundation',
+    ratingBefore:ratingChange.before, ratingAfter:ratingChange.after, ratingChange:ratingChange.change,
+    techniques:Object.keys(review.techniqueCounts), score:won ? focusScore() : 0,
+  });
+  stats.solveHistory = stats.solveHistory.slice(-300);
+  if (state.mode === 'daily' && state.dailyDate) {
+    stats.dailyRecords[state.dailyDate] = { won, seconds:state.seconds, mistakes:state.mistakes, hints:Number(state.hintsUsed || 0), grade:review.grade?.label || 'foundation' };
+  }
+  elements.reviewButton.hidden = false;
+  elements.challengeButton.hidden = false;
   saveStats(); updateStatsUI();
   setTimeout(() => elements.dialog.showModal(), 300);
 }
@@ -976,6 +1155,7 @@ function endGame(won) {
 function startNewGame(difficulty = state?.difficulty || 'medium', options = {}) {
   closeMainMenu(false);
   elements.dialog.close(); elements.statsDialog.close();
+  elements.reviewDialog.close(); elements.challengeDialog.close();
   showToast(t('toast.creating'));
   requestAnimationFrame(() => setTimeout(() => {
     state = freshState(difficulty, options);
@@ -986,8 +1166,8 @@ function startNewGame(difficulty = state?.difficulty || 'medium', options = {}) 
   }, 20));
 }
 
-function startDailyGame() {
-  const daily = dailyConfig();
+function startDailyGame(requestedDate = dateKey()) {
+  const daily = dailyConfig(typeof requestedDate === 'string' ? requestedDate : dateKey());
   startNewGame(daily.difficulty, { mode: 'daily', seed: daily.seed, dailyDate: daily.date });
 }
 
@@ -1006,6 +1186,8 @@ function updateMainMenu() {
   elements.menuContinueProgress.textContent = playable ? t('mainMenu.progress', { percent }) : t('mainMenu.ready');
   elements.menuLevel.textContent = t('progress.level', { level:playerLevel() });
   elements.menuPoints.textContent = Number(stats.points || 0).toLocaleString();
+  elements.menuRating.textContent = stats.rating;
+  elements.menuShields.textContent = stats.streakShields;
   elements.menuAchievements.textContent = stats.achievements.length;
   elements.menuLessons.textContent = `${stats.academyCompleted.length} / ${ACADEMY_LESSONS.length}`;
 }
@@ -1145,7 +1327,8 @@ function answerAcademyQuestion(event) {
   if (!stats.academyCompleted.includes(lesson.id)) {
     const levelBefore = playerLevel();
     stats.academyCompleted.push(lesson.id);
-    if (!stats.techniquesDiscovered.includes(lesson.id)) stats.techniquesDiscovered.push(lesson.id);
+    recordTechniqueActivity(lesson.id, 'academy');
+    updatePracticeProgress({ type:'lesson', id:lesson.id });
     stats.points += lesson.reward;
     const unlocked = unlockAchievements();
     const events = [
@@ -1181,6 +1364,141 @@ function nextAcademyLesson() {
   renderAcademyLesson(ACADEMY_LESSONS[(index + 1) % ACADEMY_LESSONS.length].id);
 }
 
+function renderActivityDashboard() {
+  const solveCountText = (count) => t(count === 1 ? 'stats.solveCountOne' : 'stats.solveCount', { count });
+  const dayCounts = new Map();
+  stats.solveHistory.forEach((entry) => {
+    const key = String(entry.date || '').slice(0, 10);
+    if (key) dayCounts.set(key, (dayCounts.get(key) || 0) + 1);
+  });
+  const days = [];
+  const today = new Date();
+  for (let offset = 55; offset >= 0; offset -= 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - offset);
+    const key = dateKey(date);
+    days.push({ key, count:dayCounts.get(key) || 0 });
+  }
+  elements.activityHeatmap.replaceChildren(...days.map(({ key, count }) => {
+    const cell = document.createElement('i');
+    cell.dataset.level = Math.min(4, count);
+    cell.title = `${new Date(`${key}T12:00:00`).toLocaleDateString(prefs.language)} · ${solveCountText(count)}`;
+    return cell;
+  }));
+  elements.activitySummary.textContent = solveCountText(days.reduce((total, day) => total + day.count, 0));
+
+  const difficulties = ['easy','medium','hard','expert'];
+  elements.difficultyDashboard.replaceChildren(...difficulties.map((difficulty) => {
+    const solves = stats.solveHistory.filter((entry) => entry.difficulty === difficulty && entry.won);
+    const average = solves.length ? Math.round(solves.reduce((total, entry) => total + entry.seconds, 0) / solves.length) : 0;
+    const accuracy = solves.length ? Math.round(solves.filter((entry) => entry.mistakes === 0).length / solves.length * 100) : 0;
+    const row = document.createElement('div');
+    const heading = document.createElement('span');
+    const name = document.createElement('strong'); name.textContent = t(`difficulty.${difficulty}`);
+    const summary = document.createElement('small'); summary.textContent = solves.length ? `${formatTime(average)} · ${accuracy}% ${t('stats.clean')}` : t('stats.noSolves');
+    heading.append(name, summary);
+    const meter = document.createElement('i'); meter.style.setProperty('--value', `${solves.length ? Math.max(5, Math.min(100, accuracy)) : 0}%`);
+    row.append(heading, meter);
+    return row;
+  }));
+}
+
+function renderCalendar() {
+  const year = calendarCursor.getFullYear();
+  const month = calendarCursor.getMonth();
+  elements.calendarTitle.textContent = calendarCursor.toLocaleDateString(prefs.language, { month:'long', year:'numeric' });
+  const monday = new Date(2024, 0, 1);
+  elements.calendarWeekdays.replaceChildren(...Array.from({ length:7 }, (_, index) => {
+    const day = new Date(monday); day.setDate(monday.getDate() + index);
+    const label = document.createElement('span'); label.textContent = day.toLocaleDateString(prefs.language, { weekday:'short' }); return label;
+  }));
+  const first = new Date(year, month, 1);
+  const offset = (first.getDay() + 6) % 7;
+  const gridStart = new Date(year, month, 1 - offset);
+  const today = dateKey();
+  const cellsForMonth = Array.from({ length:42 }, (_, index) => {
+    const date = new Date(gridStart); date.setDate(gridStart.getDate() + index);
+    const key = dateKey(date);
+    const button = document.createElement('button');
+    button.type = 'button'; button.dataset.date = key; button.textContent = date.getDate();
+    if (date.getMonth() !== month) button.classList.add('outside');
+    if (key === today) button.classList.add('today');
+    if (stats.dailyCompleted.includes(key)) button.classList.add('complete');
+    if (stats.protectedDays.includes(key)) button.classList.add('protected');
+    if (key > today) button.disabled = true;
+    const record = stats.dailyRecords[key];
+    button.title = record?.won ? `${t('calendar.complete')} · ${formatTime(record.seconds)}` : date.toLocaleDateString(prefs.language, { dateStyle:'long' });
+    return button;
+  });
+  elements.puzzleCalendar.replaceChildren(...cellsForMonth);
+  const currentMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  elements.calendarNext.disabled = calendarCursor >= currentMonth;
+}
+
+function renderTechniqueJournal() {
+  const discovered = ACADEMY_LESSONS.filter((lesson) => stats.techniqueJournal[lesson.id] || stats.techniquesDiscovered.includes(lesson.id));
+  elements.journalSummary.textContent = `${discovered.length} / ${ACADEMY_LESSONS.length}`;
+  elements.techniqueJournal.replaceChildren(...ACADEMY_LESSONS.map((lesson) => {
+    const activity = stats.techniqueJournal[lesson.id] || (stats.techniquesDiscovered.includes(lesson.id) ? { seen:1, academy:stats.academyCompleted.includes(lesson.id) ? 1 : 0 } : {});
+    const score = Number(activity.solved || 0) * 3 + Number(activity.academy || 0) * 2 + Number(activity.hints || 0) + Number(activity.seen || 0) * .25;
+    const level = score >= 25 ? 4 : score >= 12 ? 3 : score >= 5 ? 2 : score > 0 ? 1 : 0;
+    const card = document.createElement('article'); card.dataset.mastery = level;
+    const icon = document.createElement('span'); icon.textContent = lesson.icon;
+    const copy = document.createElement('div');
+    const heading = document.createElement('strong'); heading.textContent = t(`academy.${lesson.id}.title`);
+    const detail = document.createElement('small'); detail.textContent = level ? t(`journal.level${level}`) : t('journal.undiscovered');
+    const meter = document.createElement('i'); meter.style.width = `${Math.min(100, score * 4)}%`;
+    copy.append(heading, detail, meter);
+    const count = document.createElement('em'); count.textContent = `${Number(activity.solved || 0)}×`;
+    card.append(icon, copy, count); return card;
+  }));
+}
+
+function renderPracticePlans() {
+  const active = stats.practicePlan;
+  elements.practicePlanStatus.textContent = active?.completed ? t('plans.completed') : active ? t('plans.active') : t('plans.choose');
+  elements.practicePlans.replaceChildren(...PRACTICE_PLANS.map((definition) => {
+    const selected = active?.id === definition.id;
+    const card = document.createElement('article'); card.className = selected ? 'active' : '';
+    const heading = document.createElement('div');
+    const copy = document.createElement('div');
+    const title = document.createElement('strong'); title.textContent = t(definition.titleKey);
+    const description = document.createElement('small'); description.textContent = t(definition.descriptionKey);
+    copy.append(title, description);
+    const reward = document.createElement('em'); reward.textContent = `+${definition.reward} XP`;
+    heading.append(copy, reward); card.append(heading);
+    if (selected) {
+      const tasks = document.createElement('div'); tasks.className = 'practice-tasks';
+      definition.tasks.forEach((task) => {
+        const progress = practiceTaskProgress(active, task);
+        const row = document.createElement('p');
+        const label = document.createElement('span'); label.textContent = t(task.labelKey, { target:task.target });
+        const value = document.createElement('b'); value.textContent = `${Math.min(progress, task.target)} / ${task.target}`;
+        row.append(label, value); tasks.append(row);
+      });
+      card.append(tasks);
+    }
+    const button = document.createElement('button'); button.type = 'button';
+    button.textContent = selected ? (active.completed ? t('plans.chooseAnother') : t('plans.inProgress')) : t('plans.start');
+    button.disabled = selected && !active.completed;
+    button.addEventListener('click', () => {
+      stats.practicePlan = createPracticePlan(definition.id);
+      stats.practicePlan.progress = { lessons:[...stats.academyCompleted], techniques:[...stats.techniquesDiscovered] };
+      saveStats(); renderPracticePlans(); showToast(t('plans.started'));
+    });
+    card.append(button); return card;
+  }));
+}
+
+function updateAppBadge() {
+  if (!navigator.setAppBadge) return;
+  const dailyDue = stats.dailyCompleted.includes(dateKey()) ? 0 : 1;
+  const planDue = stats.practicePlan && !stats.practicePlan.completed ? 1 : 0;
+  const count = dailyDue + planDue;
+  if (count) navigator.setAppBadge(count).catch(() => {});
+  else navigator.clearAppBadge?.().catch(() => {});
+}
+
 function updateStatsUI() {
   const winRate = stats.played ? Math.round((stats.won / stats.played) * 100) : 0;
   elements.statPlayed.textContent = stats.played;
@@ -1190,6 +1508,13 @@ function updateStatsUI() {
   elements.statBest.textContent = bestValues.length ? formatTime(Math.min(...bestValues)) : '—';
   elements.statPoints.textContent = Number(stats.points || 0).toLocaleString();
   elements.statDaily.textContent = stats.dailyCompleted.length;
+  elements.skillRating.textContent = stats.rating;
+  const lastRatingChange = stats.solveHistory.at(-1)?.ratingChange || 0;
+  elements.skillRatingTrend.textContent = `${lastRatingChange >= 0 ? '+' : ''}${lastRatingChange} ${t('premium.lastSolve')}`;
+  const recommended = recommendDifficulty(stats.rating, stats.solveHistory);
+  elements.recommendedDifficulty.textContent = t(`difficulty.${recommended}`);
+  elements.ratingPeak.textContent = t('premium.peak', { rating:stats.ratingPeak });
+  elements.shieldCount.textContent = stats.streakShields;
   const streakLabel = t(stats.streak === 1 ? 'daily.streak' : 'daily.streakPlural', { count: stats.streak });
   const completedToday = stats.dailyCompleted.includes(dateKey());
   elements.dailyTitle.textContent = t(completedToday ? 'daily.complete' : 'daily.today');
@@ -1242,6 +1567,11 @@ function updateStatsUI() {
   updateAcademyProgressUI();
   updateBackupUI();
   updateMainMenu();
+  renderActivityDashboard();
+  renderCalendar();
+  renderTechniqueJournal();
+  renderPracticePlans();
+  updateAppBadge();
 }
 
 function buildReplayFrames() {
@@ -1295,6 +1625,233 @@ function toggleReplay() {
     if (next >= replayFrames.length) { clearInterval(replayTimer); replayTimer = null; setReplayPlaying(false); return; }
     renderReplayFrame(next);
   }, 600);
+}
+
+function openSolveReview() {
+  const review = stats.lastReview;
+  if (!review) return showToast(t('review.none'));
+  elements.dialog.close();
+  const gradeLabel = review.grade?.label || 'foundation';
+  elements.reviewGrade.textContent = t(`grade.${gradeLabel}`);
+  elements.reviewGradeText.textContent = t('review.gradeText', {
+    technique:t(`academy.${review.grade?.hardestTechnique || review.hardest}.title`),
+    steps:review.grade?.steps || 0,
+  });
+  const change = Number(review.ratingChange?.change || 0);
+  elements.reviewRatingChange.textContent = `${change >= 0 ? '+' : ''}${change}`;
+  elements.reviewRatingChange.classList.toggle('negative', change < 0);
+  const techniques = Object.keys(review.techniqueCounts || {});
+  const summaries = [
+    [t('result.time'), formatTime(review.seconds)],
+    [t('game.mistakes'), String(review.mistakes)],
+    [t('review.hints'), String(review.hintsUsed)],
+    [t('review.techniques'), String(techniques.length)],
+  ];
+  elements.reviewSummary.replaceChildren(...summaries.map(([labelText, value]) => {
+    const card = document.createElement('div');
+    const label = document.createElement('small'); label.textContent = labelText;
+    const strong = document.createElement('strong'); strong.textContent = value;
+    card.append(label, strong); return card;
+  }));
+  const turningPoints = review.turningPoints?.length ? review.turningPoints : [{ type:'move', seconds:0, technique:review.hardest, board:review.puzzle }];
+  elements.reviewTimeline.replaceChildren(...turningPoints.map((entry) => {
+    const row = document.createElement('article'); row.className = `review-${entry.type}`;
+    const time = document.createElement('span'); time.textContent = formatTime(entry.seconds || 0);
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    const description = document.createElement('small');
+    if (entry.type === 'mistake') {
+      title.textContent = t('review.mistakePoint');
+      description.textContent = t('review.mistakeText', { value:entry.value, expected:entry.expected });
+    } else if (entry.type === 'hint') {
+      title.textContent = t('review.hintPoint');
+      description.textContent = t(`academy.${entry.technique || 'nakedSingle'}.title`);
+    } else {
+      title.textContent = t('review.logicPoint');
+      description.textContent = t(`academy.${entry.technique || review.hardest}.title`);
+    }
+    copy.append(title, description); row.append(time, copy); return row;
+  }));
+  const hardest = review.hardest || review.grade?.hardestTechnique || 'nakedSingle';
+  elements.reviewTip.textContent = t('review.tip', { technique:t(`academy.${hardest}.title`) });
+  reviewPracticeInsight = [...turningPoints].reverse().find((entry) => Array.isArray(entry.board)) || { board:review.puzzle };
+  elements.reviewPracticeButton.disabled = !reviewPracticeInsight?.board;
+  requestAnimationFrame(() => { if (!elements.reviewDialog.open) elements.reviewDialog.showModal(); });
+}
+
+function practiceReviewPosition() {
+  const review = stats.lastReview;
+  if (!reviewPracticeInsight?.board || !review) return;
+  const puzzle = reviewPracticeInsight.board.map((value, index) => value === review.solution[index] ? value : 0);
+  startNewGame(review.difficulty, { mode:'classic', variant:review.variant, puzzle, solution:review.solution });
+}
+
+function challengePayloadFromControls() {
+  return {
+    puzzle:state.puzzle, solution:state.solution, difficulty:state.difficulty, mode:['hyper','mini'].includes(state.mode) ? state.mode : 'classic', variant:state.variant,
+    maxMistakes:Number(elements.challengeMistakes.value), maxHints:Number(elements.challengeHints.value),
+    notesAllowed:elements.challengeNotes.checked, timeLimit:Number(elements.challengeTime.value),
+    benchmark:state.status === 'won' ? { seconds:state.seconds, mistakes:state.mistakes, hints:Number(state.hintsUsed || 0), rating:stats.rating } : null,
+  };
+}
+
+function challengeUrl(code) {
+  const url = new URL(location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set(code.startsWith('SDP1.') ? 'transfer' : 'challenge', code);
+  return url.toString();
+}
+
+function renderTransferCode() {
+  try {
+    if (transferMode === 'progress') {
+      activeTransferValue = encodeProgressSnapshot({
+        prefs, stats,
+        achievementIds:ACHIEVEMENTS.map(({ id }) => id),
+        lessonIds:ACADEMY_LESSONS.map(({ id }) => id),
+      });
+      elements.transferCode.value = activeTransferValue;
+    } else {
+      activeTransferValue = encodeChallenge(challengePayloadFromControls());
+      elements.transferCode.value = challengeUrl(activeTransferValue);
+    }
+    elements.qrStage.innerHTML = createQrSvg(activeTransferValue, { foreground:'#171426' });
+    elements.challengeStatus.textContent = t('transfer.private');
+  } catch (error) {
+    elements.qrStage.replaceChildren();
+    elements.challengeStatus.textContent = error.message;
+  }
+}
+
+function openChallenge() {
+  transferMode = 'challenge';
+  challengeReturnToMenu = !elements.mainMenu.hidden;
+  closeMainMenu(false);
+  elements.dialog.close(); elements.settingsDialog.close();
+  elements.challengeEyebrow.textContent = t('challenge.eyebrow');
+  elements.challengeTitle.textContent = t('challenge.title');
+  elements.challengeLead.textContent = t('challenge.lead');
+  elements.challengeRules.hidden = false;
+  elements.challengeCopy.textContent = t('challenge.copy');
+  elements.challengeShare.hidden = false;
+  renderTransferCode();
+  requestAnimationFrame(() => { if (!elements.challengeDialog.open) elements.challengeDialog.showModal(); });
+}
+
+function openProgressQr() {
+  transferMode = 'progress';
+  challengeReturnToMenu = false;
+  elements.settingsDialog.close();
+  elements.challengeEyebrow.textContent = t('transfer.eyebrow');
+  elements.challengeTitle.textContent = t('transfer.title');
+  elements.challengeLead.textContent = t('transfer.lead');
+  elements.challengeRules.hidden = true;
+  elements.challengeCopy.textContent = t('transfer.copyCode');
+  elements.challengeShare.hidden = true;
+  renderTransferCode();
+  requestAnimationFrame(() => { if (!elements.challengeDialog.open) elements.challengeDialog.showModal(); });
+}
+
+function openIncomingTransfer(code) {
+  transferMode = 'progress';
+  challengeReturnToMenu = false;
+  elements.challengeEyebrow.textContent = t('transfer.eyebrow');
+  elements.challengeTitle.textContent = t('transfer.title');
+  elements.challengeLead.textContent = t('transfer.importLead');
+  elements.challengeRules.hidden = true;
+  elements.challengeCopy.textContent = t('transfer.copyCode');
+  elements.challengeShare.hidden = true;
+  elements.transferCode.value = code;
+  try { elements.qrStage.innerHTML = createQrSvg(code, { foreground:'#171426' }); } catch { elements.qrStage.replaceChildren(); }
+  elements.challengeStatus.textContent = t('transfer.reviewImport');
+  elements.challengeDialog.showModal();
+}
+
+function handleLaunchView() {
+  if (!prefs.onboarded || !pendingLaunchView && !incomingTransferCode) return;
+  const view = pendingLaunchView;
+  pendingLaunchView = null;
+  if (incomingTransferCode) {
+    const code = incomingTransferCode; incomingTransferCode = null;
+    openIncomingTransfer(code);
+  } else if (view === 'academy') openAcademy();
+  else if (view === 'stats') { updateStatsUI(); elements.statsDialog.showModal(); }
+  else if (view === 'challenge') openChallenge();
+}
+
+async function copyTransfer() {
+  const value = elements.transferCode.value.trim();
+  if (!value) return;
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast(t('toast.copied'));
+  } catch {
+    elements.transferCode.select();
+    document.execCommand('copy');
+    showToast(t('toast.copied'));
+  }
+}
+
+async function shareChallenge() {
+  const url = elements.transferCode.value.trim();
+  const data = { title:t('challenge.title'), text:t('challenge.shareText'), url };
+  try {
+    if (navigator.share) await navigator.share(data);
+    else await copyTransfer();
+  } catch (error) {
+    if (error?.name !== 'AbortError') showToast(t('challenge.shareFailed'));
+  }
+}
+
+function importTransferValue(rawValue) {
+  const value = String(rawValue || elements.transferCode.value).trim();
+  try {
+    const challengeToken = value.includes('challenge=') ? new URL(value, location.href).searchParams.get('challenge') : value;
+    const progressToken = value.includes('transfer=') ? new URL(value, location.href).searchParams.get('transfer') : value;
+    if (challengeToken?.startsWith('SDC1.')) {
+      const challenge = decodeChallenge(challengeToken);
+      if (countSolutions(challenge.puzzle, 2, challenge.variant) !== 1) throw new Error(t('challenge.invalid'));
+      challengeReturnToMenu = false;
+      startNewGame(challenge.difficulty, { mode:challenge.mode, variant:challenge.variant, puzzle:challenge.puzzle, solution:challenge.solution, challenge });
+      showToast(t('challenge.ready'));
+      return;
+    }
+    if (progressToken?.startsWith('SDP1.')) {
+      const snapshot = decodeProgressSnapshot(progressToken, ACHIEVEMENTS.map(({ id }) => id), ACADEMY_LESSONS.map(({ id }) => id));
+      prefs = { ...prefs, ...snapshot.prefs, onboarded:true, languageConfirmed:true };
+      stats = {
+        ...stats,
+        ...snapshot.stats,
+        played:Math.max(stats.played, snapshot.stats.played),
+        won:Math.max(stats.won, snapshot.stats.won),
+        points:Math.max(stats.points, snapshot.stats.points),
+        rating:Math.max(stats.rating, snapshot.stats.rating),
+        ratingPeak:Math.max(stats.ratingPeak, snapshot.stats.ratingPeak),
+        achievements:[...new Set([...stats.achievements, ...snapshot.stats.achievements])],
+        academyCompleted:[...new Set([...stats.academyCompleted, ...snapshot.stats.academyCompleted])],
+        dailyCompleted:[...new Set([...stats.dailyCompleted, ...snapshot.stats.dailyCompleted])].sort(),
+      };
+      savePrefs(); saveStats(); applyPrefs(); recalculateDailyStreak(); updateStatsUI();
+      elements.challengeDialog.close();
+      showToast(t('transfer.restored'));
+      return;
+    }
+    throw new Error(t('transfer.invalid'));
+  } catch (error) {
+    elements.challengeStatus.textContent = error.message || t('transfer.invalid');
+  }
+}
+
+async function scanTransferFile(file) {
+  if (!file) return;
+  try {
+    const value = await scanQrFile(file);
+    elements.transferCode.value = value;
+    importTransferValue(value);
+  } catch (error) {
+    elements.challengeStatus.textContent = error.message;
+  }
 }
 
 function createResultCardBlob() {
@@ -1453,7 +2010,7 @@ async function updatePwaUI() {
   elements.pwaCache.textContent = t(supported && (navigator.serviceWorker.controller || swRegistration?.active) ? 'pwa.ready' : 'pwa.unavailable');
   const worker = swRegistration?.waiting || swRegistration?.active || navigator.serviceWorker?.controller;
   const version = supported ? await messageServiceWorker(worker, 'GET_VERSION') : null;
-  elements.pwaVersion.textContent = version?.version || 'v19';
+  elements.pwaVersion.textContent = version?.version || 'v20';
   elements.pwaSummary.textContent = swRegistration?.waiting ? t('pwa.summaryUpdate') : t('pwa.summaryReady');
 }
 
@@ -1518,6 +2075,7 @@ function bindEvents() {
     if (button.dataset.menuMode === 'daily') startDailyGame(); else startModeGame(button.dataset.menuMode);
   });
   elements.menuAcademyButton.addEventListener('click', openAcademy);
+  elements.menuChallengeButton.addEventListener('click', openChallenge);
   elements.menuStatsButton.addEventListener('click', () => { updateStatsUI(); elements.statsDialog.showModal(); });
   elements.menuSettingsButton.addEventListener('click', () => { elements.settingsLanguage.value = prefs.language; void updatePwaUI(); elements.settingsDialog.showModal(); });
   elements.pauseButton.addEventListener('click', () => setPaused(!state.paused));
@@ -1530,6 +2088,25 @@ function bindEvents() {
   elements.hintCoachClose.addEventListener('click', dismissHint);
   elements.dailyButton.addEventListener('click', startDailyGame);
   elements.shareResultButton.addEventListener('click', shareResult);
+  elements.reviewButton.addEventListener('click', openSolveReview);
+  elements.challengeButton.addEventListener('click', openChallenge);
+  elements.reviewClose.addEventListener('click', () => elements.reviewDialog.close());
+  elements.reviewPracticeButton.addEventListener('click', practiceReviewPosition);
+  elements.challengeClose.addEventListener('click', () => elements.challengeDialog.close());
+  elements.challengeDialog.addEventListener('close', () => {
+    if (challengeReturnToMenu) {
+      challengeReturnToMenu = false;
+      openMainMenu();
+    } else if (state.status === 'playing' && elements.mainMenu.hidden && elements.introScreen.hidden) {
+      state.paused = false; render(); save();
+    }
+  });
+  [elements.challengeMistakes, elements.challengeHints, elements.challengeTime, elements.challengeNotes].forEach((control) => control.addEventListener('change', renderTransferCode));
+  elements.challengeCopy.addEventListener('click', copyTransfer);
+  elements.challengeShare.addEventListener('click', shareChallenge);
+  elements.challengeImport.addEventListener('click', () => importTransferValue());
+  elements.challengeScan.addEventListener('click', () => elements.challengeScanFile.click());
+  elements.challengeScanFile.addEventListener('change', (event) => { const [file] = event.target.files; event.target.value = ''; void scanTransferFile(file); });
   elements.replayButton.addEventListener('click', openReplay);
   elements.replayClose.addEventListener('click', () => { clearInterval(replayTimer); replayTimer = null; setReplayPlaying(false); elements.replayDialog.close(); });
   elements.replayPlay.addEventListener('click', toggleReplay);
@@ -1569,6 +2146,7 @@ function bindEvents() {
   elements.backupExportButton.addEventListener('click', exportBackup);
   elements.backupRestoreButton.addEventListener('click', () => elements.backupFileInput.click());
   elements.backupFileInput.addEventListener('change', (event) => { const [file] = event.target.files; event.target.value = ''; void restoreBackup(file); });
+  elements.progressQrButton.addEventListener('click', openProgressQr);
   elements.pwaInstallButton.addEventListener('click', installPwa);
   elements.pwaInstallButtons.forEach((button) => button.addEventListener('click', installPwa));
   elements.pwaCheckButton.addEventListener('click', checkForPwaUpdate);
@@ -1603,13 +2181,20 @@ function bindEvents() {
   elements.statsButton.addEventListener('click', () => { updateStatsUI(); elements.statsDialog.showModal(); });
   elements.statsClose.addEventListener('click', () => elements.statsDialog.close());
   elements.statsPlay.addEventListener('click', () => elements.statsDialog.close());
+  elements.calendarPrevious.addEventListener('click', () => { calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() - 1, 1); renderCalendar(); });
+  elements.calendarNext.addEventListener('click', () => { calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() + 1, 1); renderCalendar(); });
+  elements.puzzleCalendar.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-date]');
+    if (!button || button.disabled) return;
+    startDailyGame(button.dataset.date);
+  });
 
   document.addEventListener('keydown', (event) => {
     if (!elements.mainMenu.hidden) {
       if (event.key === 'Escape') { closeMainMenu(true); event.preventDefault(); }
       return;
     }
-    if (elements.dialog.open || elements.statsDialog.open || elements.settingsDialog.open || elements.replayDialog.open || elements.academyDialog.open || !elements.introScreen.hidden) return;
+    if (elements.dialog.open || elements.statsDialog.open || elements.settingsDialog.open || elements.replayDialog.open || elements.academyDialog.open || elements.reviewDialog.open || elements.challengeDialog.open || !elements.introScreen.hidden) return;
     if (/^[1-9]$/.test(event.key) && Number(event.key) <= state.size) enterNumber(Number(event.key));
     else if (event.key === 'Backspace' || event.key === 'Delete' || event.key === '0') erase();
     else if (event.key.toLowerCase() === 'n') toggleNotes();
@@ -1633,6 +2218,11 @@ function startTimer() {
     if (!state.paused && state.status === 'playing' && state.mode !== 'zen') {
       state.seconds += 1;
       elements.timer.textContent = formatTime(state.seconds);
+      if (state.challenge?.timeLimit && state.seconds >= state.challenge.timeLimit) {
+        showToast(t('challenge.timeExpired'));
+        endGame(false);
+        return;
+      }
       if (state.seconds % 5 === 0) save();
     }
   }, 1000);
@@ -1667,9 +2257,32 @@ function init() {
   window.addEventListener('online', () => void updatePwaUI());
   window.addEventListener('offline', () => void updatePwaUI());
   const saved = readJSON(STORAGE_KEY, null);
-  const launchMode = new URLSearchParams(location.search).get('mode');
+  const launchParams = new URLSearchParams(location.search);
+  const sharedSource = [launchParams.get('share_url'), launchParams.get('share_text')].find((value) => value?.includes('challenge=') || value?.includes('SDC1.'));
+  let challengeCode = launchParams.get('challenge');
+  if (!challengeCode && sharedSource) {
+    challengeCode = sharedSource.match(/SDC1\.[A-Za-z0-9_-]+/)?.[0] || null;
+    if (!challengeCode && sharedSource.includes('challenge=')) {
+      try { challengeCode = new URL(sharedSource, location.href).searchParams.get('challenge'); } catch { challengeCode = null; }
+    }
+  }
+  incomingTransferCode = launchParams.get('transfer') || launchParams.get('share_text')?.match(/SDP1\.[A-Za-z0-9_-]+/)?.[0] || null;
+  pendingLaunchView = launchParams.get('view');
+  if (challengeCode) pendingLaunchView = null;
+  const launchMode = launchParams.get('mode');
   const shortcutMode = ['daily','killer','hyper','mini','zen'].includes(launchMode) ? launchMode : null;
-  if (shortcutMode) {
+  if (challengeCode) {
+    try {
+      const challenge = decodeChallenge(challengeCode);
+      if (countSolutions(challenge.puzzle, 2, challenge.variant) !== 1) throw new Error('Invalid challenge');
+      state = freshState(challenge.difficulty, { mode:challenge.mode, variant:challenge.variant, puzzle:challenge.puzzle, solution:challenge.solution, challenge });
+      stats.played += 1; saveStats(); save();
+      history.replaceState({}, '', location.pathname);
+    } catch {
+      state = freshState('medium');
+      stats.played += 1; saveStats(); save();
+    }
+  } else if (shortcutMode) {
     if (shortcutMode === 'daily') {
       const daily = dailyConfig(); state = freshState(daily.difficulty, { mode:'daily', seed:daily.seed, dailyDate:daily.date });
     } else {
@@ -1688,6 +2301,9 @@ function init() {
     state.size ||= config.size; state.boxRows ||= config.boxRows; state.boxCols ||= config.boxCols;
     state.cages = Array.isArray(state.cages) ? state.cages : state.mode === 'killer' ? createKillerCages(state.solution) : [];
     state.replay = Array.isArray(state.replay) ? state.replay : [];
+    state.insights = Array.isArray(state.insights) ? state.insights : [];
+    state.grade ||= gradePuzzleByTechniques(state.puzzle, state.solution, state.variant);
+    state.challenge ||= null;
     state.seenTechniqueSignatures = Array.isArray(state.seenTechniqueSignatures) ? state.seenTechniqueSignatures : [];
     state.hintsUsed ||= 0;
     state.autoNotesUsed ||= false;
@@ -1701,10 +2317,13 @@ function init() {
     state = freshState('medium');
     stats.played += 1; saveStats(); save();
   }
+  recalculateDailyStreak();
+  saveStats();
   initializeBoard(state.size); bindEvents();
   render(); updateStatsUI(); startTimer(); registerServiceWorker();
   if (!prefs.onboarded) showIntro();
-  else if (!shortcutMode) openMainMenu();
+  else if (!shortcutMode && !challengeCode && !pendingLaunchView && !incomingTransferCode) openMainMenu();
+  else handleLaunchView();
 }
 
 init();
