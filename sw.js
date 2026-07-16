@@ -1,4 +1,4 @@
-const VERSION = 'v16';
+const VERSION = 'v17';
 const CACHE = `sudodoku-${VERSION}`;
 const CORE = [
   './', './index.html', './styles.css', './manifest.webmanifest',

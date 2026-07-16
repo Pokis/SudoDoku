@@ -15,7 +15,7 @@ A polished, installable Sudoku game that runs entirely in the browser. Sudodoku 
 - Classic, Killer, Hyper, Mini 6×6, Zen, and deterministic Daily modes
 - Weekly quests, XP levels, replay timelines, generated result cards, and unlockable visual styles
 - Responsive layout, reduced-motion support, light/dark themes, and subtle sound effects
-- Installable PWA with full offline support
+- Installable PWA with full offline support and an explicit install button throughout the app
 
 ## Run locally
 

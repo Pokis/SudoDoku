@@ -18,7 +18,7 @@ export function createBackupPayload(data, exportedAt = new Date().toISOString())
   return {
     format:BACKUP_FORMAT,
     version:BACKUP_VERSION,
-    appVersion:'v16',
+    appVersion:'v17',
     exportedAt,
     checksum:backupChecksum(snapshot),
     data:snapshot,

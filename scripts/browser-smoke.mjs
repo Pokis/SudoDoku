@@ -116,13 +116,19 @@ try {
     visible:!document.querySelector('#languageLaunch').hidden,
     introHidden:document.querySelector('#introCard').hidden,
     choices:document.querySelectorAll('#languageChoiceGrid [data-language]').length,
-    selected:document.querySelector('#languageChoiceGrid [aria-checked="true"]')?.dataset.language
+    selected:document.querySelector('#languageChoiceGrid [aria-checked="true"]')?.dataset.language,
+    installButtons:document.querySelectorAll('[data-install-app]').length,
+    introInstallVisible:!document.querySelector('.intro-install-button').hidden,
+    introInstallText:document.querySelector('.intro-install-button').textContent.trim()
   }))()`);
   assert.match(languageLaunch.title, /Edmundas/);
   assert.equal(languageLaunch.visible, true, 'First launch must begin with a dedicated language page');
   assert.equal(languageLaunch.introHidden, true, 'The introduction must wait until language is confirmed');
   assert.equal(languageLaunch.choices, 5, 'Every supported language must be clearly offered');
   assert.ok(languageLaunch.selected, 'The detected language must be visibly preselected');
+  assert.equal(languageLaunch.installButtons, 3, 'Install access must remain explicit across onboarding, menu, and gameplay');
+  assert.equal(languageLaunch.introInstallVisible, true, 'The PWA install action must be visible from first launch');
+  assert.match(languageLaunch.introInstallText, /install/i);
   await delay(700);
   await screenshot('desktop-language-selection-1440x1000.png');
   await cdp.call('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:true });
@@ -189,13 +195,26 @@ try {
     welcome:document.querySelector('#mainMenuTitle').textContent.trim(),
     modes:document.querySelectorAll('[data-menu-mode]').length,
     menuButton:!!document.querySelector('#gameMenuButton'),
-    achievements:document.querySelectorAll('#achievementList .achievement-card').length
+    achievements:document.querySelectorAll('#achievementList .achievement-card').length,
+    installVisible:!document.querySelector('.main-menu-header [data-install-app]').hidden
   }))()`);
   assert.equal(mainMenu.visible, true, 'Returning players must land on the main menu');
   assert.match(mainMenu.welcome, /Edmundas/, 'The main menu must make the Edmundas dedication prominent');
   assert.equal(mainMenu.modes, 6, 'The main menu must expose all six game modes');
   assert.equal(mainMenu.menuButton, true, 'Gameplay must provide an explicit main-menu action');
   assert.equal(mainMenu.achievements, 40, 'The complete achievement collection must render');
+  assert.equal(mainMenu.installVisible, true, 'The main menu must expose the PWA install action');
+  const installAction = await evaluate(`new Promise((resolve) => {
+    const promptEvent = new Event('beforeinstallprompt');
+    promptEvent.prompt = () => { window.__sudodokuInstallPrompted = true; };
+    promptEvent.userChoice = Promise.resolve({ outcome:'dismissed' });
+    window.dispatchEvent(promptEvent);
+    const button = document.querySelector('.main-menu-header [data-install-app]');
+    const ready = button.classList.contains('install-ready');
+    button.click();
+    setTimeout(() => resolve({ ready, prompted:window.__sudodokuInstallPrompted === true, enabled:!button.disabled }), 80);
+  })`, true);
+  assert.deepEqual(installAction, { ready:true, prompted:true, enabled:true }, 'The visible install button must invoke and recover from the native PWA prompt');
   const controlled = await evaluate(`new Promise((resolve) => {
     if (navigator.serviceWorker.controller) { resolve(true); return; }
     navigator.serviceWorker.addEventListener('controllerchange', () => resolve(true), { once:true });
@@ -213,6 +232,7 @@ try {
   await evaluate("document.querySelector('#menuContinueButton').click()");
   await waitFor("document.querySelector('#mainMenu').hidden && !document.body.classList.contains('main-menu-open')");
   await delay(300);
+  assert.equal(await evaluate("!document.querySelector('.topbar-install-button').hidden"), true, 'Gameplay must keep a compact install action in its toolbar');
 
   const smartNotesOn = await evaluate(`(() => {
     document.querySelector('#autoNotesButton').click();

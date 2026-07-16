@@ -30,7 +30,7 @@ const elements = {
   settingsLanguage: $('#settingsLanguage'), hapticsToggle: $('#hapticsToggle'), autoPauseToggle: $('#autoPauseToggle'), replayIntroButton: $('#replayIntroButton'),
   themeGrid: $('#themeGrid'), boardStyleGrid: $('#boardStyleGrid'),
   pwaSummary: $('#pwaSummary'), pwaConnection: $('#pwaConnection'), pwaCache: $('#pwaCache'), pwaVersion: $('#pwaVersion'), pwaInstallState: $('#pwaInstallState'),
-  pwaInstallButton: $('#pwaInstallButton'), pwaCheckButton: $('#pwaCheckButton'), pwaRepairButton: $('#pwaRepairButton'), updateBanner: $('#updateBanner'), updateAction: $('#updateAction'), updateDismiss: $('#updateDismiss'), progressEventStack: $('#progressEventStack'),
+  pwaInstallButton: $('#pwaInstallButton'), pwaInstallButtons: [...document.querySelectorAll('[data-install-app]')], pwaCheckButton: $('#pwaCheckButton'), pwaRepairButton: $('#pwaRepairButton'), updateBanner: $('#updateBanner'), updateAction: $('#updateAction'), updateDismiss: $('#updateDismiss'), progressEventStack: $('#progressEventStack'),
   introScreen: $('#introScreen'), languageLaunch: $('#languageLaunch'), introCard: $('#introCard'), languageChoiceGrid: $('#languageChoiceGrid'), languageLaunchCurrent: $('#languageLaunchCurrent'), languageContinue: $('#languageContinue'), introLanguage: $('#introLanguage'), introStart: $('#introStart'), miniBoard: $('#miniBoard'),
   replayButton: $('#replayButton'), replayDialog: $('#replayDialog'), replayClose: $('#replayClose'), replayBoard: $('#replayBoard'), replayRange: $('#replayRange'), replayPlay: $('#replayPlay'), replayStep: $('#replayStep'), replayCaption: $('#replayCaption'),
   academyButton: $('#academyButton'), academySettingsButton: $('#academySettingsButton'), academyDialog: $('#academyDialog'), academyClose: $('#academyClose'), academyCardProgress: $('#academyCardProgress'), academySettingsProgress: $('#academySettingsProgress'), academyCompleteCount: $('#academyCompleteCount'), academyProgressBar: $('#academyProgressBar'), academyLessonList: $('#academyLessonList'), academyStage: $('#academyStage'), academyRules: $('#academyRules'), academyRulesStart: $('#academyRulesStart'), academyLessonLevel: $('#academyLessonLevel'), academyLessonReward: $('#academyLessonReward'), academyLessonTitle: $('#academyLessonTitle'), academyLessonIntro: $('#academyLessonIntro'), academyBoard: $('#academyBoard'), academySteps: $('#academySteps'), academyQuestion: $('#academyQuestion'), academyChoices: $('#academyChoices'), academyFeedback: $('#academyFeedback'), academyNextButton: $('#academyNextButton'),
@@ -383,6 +383,10 @@ function applyLocale(refresh = true) {
   elements.settingsLanguage.setAttribute('aria-label', t('common.language'));
   elements.updateDismiss.setAttribute('aria-label', t('pwa.dismiss'));
   elements.homeButton.setAttribute('aria-label', t('mainMenu.open'));
+  elements.pwaInstallButtons.forEach((button) => {
+    button.setAttribute('aria-label', t('pwa.install'));
+    button.title = t('pwa.install');
+  });
   if (refresh && state) { render(); updateStatsUI(); }
   if (elements.academyDialog.open) {
     if (academyCurrentLesson === 'rules') renderAcademyRules();
@@ -1437,23 +1441,35 @@ function showUpdateAvailable(registration = swRegistration) {
 
 async function updatePwaUI() {
   const supported = 'serviceWorker' in navigator && location.protocol !== 'file:';
+  const installed = isStandalone();
   elements.pwaConnection.textContent = t(navigator.onLine ? 'pwa.online' : 'pwa.offline');
-  elements.pwaInstallState.textContent = t(isStandalone() ? 'pwa.installed' : 'pwa.browser');
-  elements.pwaInstallButton.disabled = isStandalone();
+  elements.pwaInstallState.textContent = t(installed ? 'pwa.installed' : 'pwa.browser');
+  elements.pwaInstallButton.disabled = installed;
+  elements.pwaInstallButtons.forEach((button) => {
+    button.hidden = installed;
+    button.disabled = false;
+    button.classList.toggle('install-ready', Boolean(deferredInstallPrompt));
+  });
   elements.pwaCache.textContent = t(supported && (navigator.serviceWorker.controller || swRegistration?.active) ? 'pwa.ready' : 'pwa.unavailable');
   const worker = swRegistration?.waiting || swRegistration?.active || navigator.serviceWorker?.controller;
   const version = supported ? await messageServiceWorker(worker, 'GET_VERSION') : null;
-  elements.pwaVersion.textContent = version?.version || 'v16';
+  elements.pwaVersion.textContent = version?.version || 'v17';
   elements.pwaSummary.textContent = swRegistration?.waiting ? t('pwa.summaryUpdate') : t('pwa.summaryReady');
 }
 
 async function installPwa() {
   if (isStandalone()) return;
   if (!deferredInstallPrompt) { showToast(t('pwa.installUnavailable')); return; }
-  deferredInstallPrompt.prompt();
-  await deferredInstallPrompt.userChoice;
-  deferredInstallPrompt = null;
-  await updatePwaUI();
+  elements.pwaInstallButtons.forEach((button) => { button.disabled = true; });
+  try {
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+  } catch {
+    showToast(t('pwa.installUnavailable'));
+  } finally {
+    await updatePwaUI();
+  }
 }
 
 async function checkForPwaUpdate() {
@@ -1554,6 +1570,7 @@ function bindEvents() {
   elements.backupRestoreButton.addEventListener('click', () => elements.backupFileInput.click());
   elements.backupFileInput.addEventListener('change', (event) => { const [file] = event.target.files; event.target.value = ''; void restoreBackup(file); });
   elements.pwaInstallButton.addEventListener('click', installPwa);
+  elements.pwaInstallButtons.forEach((button) => button.addEventListener('click', installPwa));
   elements.pwaCheckButton.addEventListener('click', checkForPwaUpdate);
   elements.pwaRepairButton.addEventListener('click', repairOfflineData);
   elements.updateAction.addEventListener('click', activatePwaUpdate);
