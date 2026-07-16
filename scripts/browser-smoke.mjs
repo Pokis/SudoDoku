@@ -597,8 +597,43 @@ try {
   assert.equal(await evaluate("!!JSON.parse(localStorage.getItem('sudodoku-game-v1') || 'null')?.challenge"), true, 'Challenge links must start the exact constrained puzzle');
   assert.equal(await evaluate("!document.querySelector('#challengeStrip').hidden && document.querySelector('#challengeRuleSummary').textContent.includes('3')"), true, 'Active challenge restrictions must remain visible during play');
 
+  await evaluate("document.querySelector('#gameMenuButton').click(); document.querySelector('[data-menu-mode=\"killer\"]').click()");
+  await waitFor("JSON.parse(localStorage.getItem('sudodoku-game-v1') || 'null')?.mode === 'killer' && document.querySelectorAll('#board .cell').length === 81");
+  const mobileKillerGeometry = await evaluate(`(() => {
+    const board = document.querySelector('#board').getBoundingClientRect();
+    const cells = [...document.querySelectorAll('#board .cell')]
+      .filter((cell) => getComputedStyle(cell).transform === 'none')
+      .map((cell) => cell.getBoundingClientRect());
+    const widths = cells.map(({ width }) => width);
+    const heights = cells.map(({ height }) => height);
+    return {
+      boardDelta:Math.abs(board.width - board.height),
+      widthDelta:Math.max(...widths) - Math.min(...widths),
+      heightDelta:Math.max(...heights) - Math.min(...heights)
+    };
+  })()`);
+  assert.ok(mobileKillerGeometry.boardDelta < 1, 'The Killer board must remain square on mobile');
+  assert.ok(mobileKillerGeometry.widthDelta < 1, 'Every Killer column must have equal width on mobile');
+  assert.ok(mobileKillerGeometry.heightDelta < 1, 'Every Killer row must have equal height on mobile');
+
   await cdp.call('Emulation.setDeviceMetricsOverride', { width:1440, height:1000, deviceScaleFactor:1, mobile:false });
   await delay(250);
+  const desktopKillerGeometry = await evaluate(`(() => {
+    const board = document.querySelector('#board').getBoundingClientRect();
+    const cells = [...document.querySelectorAll('#board .cell')]
+      .filter((cell) => getComputedStyle(cell).transform === 'none')
+      .map((cell) => cell.getBoundingClientRect());
+    const widths = cells.map(({ width }) => width);
+    const heights = cells.map(({ height }) => height);
+    return {
+      boardDelta:Math.abs(board.width - board.height),
+      widthDelta:Math.max(...widths) - Math.min(...widths),
+      heightDelta:Math.max(...heights) - Math.min(...heights)
+    };
+  })()`);
+  assert.ok(desktopKillerGeometry.boardDelta < 1, 'The Killer board must remain square on desktop');
+  assert.ok(desktopKillerGeometry.widthDelta < 1, 'Every Killer column must have equal width on desktop');
+  assert.ok(desktopKillerGeometry.heightDelta < 1, 'Every Killer row must have equal height on desktop');
   await screenshot('desktop-gameplay-1440x1000.png');
   console.log(`Browser smoke passed: responsive gameplay, Academy, premium review/stats/plans, challenge links, QR transfer, PWA, and backup.`);
 } finally {
