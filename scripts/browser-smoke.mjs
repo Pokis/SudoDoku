@@ -282,6 +282,17 @@ try {
   assert.equal(hint.coach, true, 'Hint coach must become visible');
   assert.equal(hint.highlighted, true, 'A hint must visibly highlight its board context');
 
+  const settingsControl = await evaluate(`(() => {
+    const button = document.querySelector('#settingsButton');
+    return {
+      hasGear:!!button.querySelector('svg circle') && button.querySelectorAll('svg path').length > 0,
+      text:button.textContent.trim(),
+      label:button.getAttribute('aria-label')
+    };
+  })()`);
+  assert.equal(settingsControl.hasGear, true, 'Settings must use a recognizable gear icon');
+  assert.equal(settingsControl.text, '', 'Settings must not look like a language-only control');
+  assert.match(settingsControl.label, /settings/i);
   await evaluate("document.querySelector('#settingsButton').click()");
   await delay(200);
   await screenshot('mobile-edmundas-settings-390x844.png');

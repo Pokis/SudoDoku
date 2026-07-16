@@ -17,7 +17,7 @@ const elements = {
   hintCoach: $('#hintCoach'), hintCoachTitle: $('#hintCoachTitle'), hintCoachText: $('#hintCoachText'), hintCoachClose: $('#hintCoachClose'),
   newGameButton: $('#newGameButton'), progressRing: $('#progressRing'), progressPercent: $('#progressPercent'), progressText: $('#progressText'),
   themeButton: $('#themeButton'), soundButton: $('#soundButton'), statsButton: $('#statsButton'), modeChip: $('#modeChip'),
-  settingsButton: $('#settingsButton'), languageCode: $('#languageCode'), homeButton: $('#homeButton'), gameMenuButton: $('#gameMenuButton'),
+  settingsButton: $('#settingsButton'), homeButton: $('#homeButton'), gameMenuButton: $('#gameMenuButton'),
   levelBadge: $('#levelBadge'), questTitle: $('#questTitle'), questDescription: $('#questDescription'), questReward: $('#questReward'), questProgress: $('#questProgress'), questCount: $('#questCount'),
   dailyButton: $('#dailyButton'), dailyTitle: $('#dailyTitle'), dailySubtitle: $('#dailySubtitle'),
   dialog: $('#gameDialog'), dialogEyebrow: $('#dialogEyebrow'), dialogTitle: $('#dialogTitle'), dialogText: $('#dialogText'),
@@ -373,8 +373,8 @@ function applyLocale(refresh = true) {
   populateLanguageSelect(elements.introLanguage);
   populateLanguageSelect(elements.settingsLanguage);
   renderLanguageChoices();
-  elements.languageCode.textContent = prefs.language.toUpperCase();
   elements.settingsButton.setAttribute('aria-label', t('common.settings'));
+  elements.settingsButton.title = t('common.settings');
   elements.statsButton.setAttribute('aria-label', t('common.statistics'));
   elements.soundButton.setAttribute('aria-label', t('common.sound'));
   elements.themeButton.setAttribute('aria-label', t('common.theme'));
@@ -1453,7 +1453,7 @@ async function updatePwaUI() {
   elements.pwaCache.textContent = t(supported && (navigator.serviceWorker.controller || swRegistration?.active) ? 'pwa.ready' : 'pwa.unavailable');
   const worker = swRegistration?.waiting || swRegistration?.active || navigator.serviceWorker?.controller;
   const version = supported ? await messageServiceWorker(worker, 'GET_VERSION') : null;
-  elements.pwaVersion.textContent = version?.version || 'v18';
+  elements.pwaVersion.textContent = version?.version || 'v19';
   elements.pwaSummary.textContent = swRegistration?.waiting ? t('pwa.summaryUpdate') : t('pwa.summaryReady');
 }
 
