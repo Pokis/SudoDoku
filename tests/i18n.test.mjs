@@ -23,9 +23,16 @@ test('Lithuanian localization covers onboarding and gameplay', () => {
 test('the Edmundas dedication is explicit in the primary experience', () => {
   assert.match(translate('en', 'dedication.madeFor'), /Edmundas/);
   assert.match(translate('en', 'dedication.footer'), /Edmundas/);
-  assert.match(translate('en', 'mainMenu.welcome'), /Edmundas/);
   assert.match(translate('lt', 'mainMenu.forEdmundas'), /Edmundui/);
   assert.match(translate('en', 'share.cardFooter'), /Edmundas/);
+});
+
+test('returning-player copy does not identify the player as Edmundas', () => {
+  for (const { code } of LOCALES) {
+    assert.doesNotMatch(translate(code, 'mainMenu.personal'), /Edmund/i);
+    assert.doesNotMatch(translate(code, 'mainMenu.welcome'), /Edmund/i);
+  }
+  assert.doesNotMatch(translate('lt', 'toast.restored'), /Sveikas|Edmund/i);
 });
 
 test('English and Lithuanian cover the complete achievement collection', () => {

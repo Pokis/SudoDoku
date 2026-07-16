@@ -183,7 +183,7 @@ try {
   assert.equal(confirmedLanguage.language, 'lt');
   assert.equal(confirmedLanguage.confirmed, true, 'The explicit language confirmation must persist');
   await delay(300);
-  await screenshot('desktop-edmundas-welcome-1440x1000.png');
+  await screenshot('desktop-dedication-intro-1440x1000.png');
   await evaluate("navigator.serviceWorker.ready.then(() => true)", true);
   await evaluate("localStorage.setItem('sudodoku-prefs-v1', JSON.stringify({ onboarded:true, languageConfirmed:true, language:'en', academyRulesSeen:false }))");
   const loaded = cdp.event('Page.loadEventFired');
@@ -193,13 +193,17 @@ try {
   const mainMenu = await evaluate(`(() => ({
     visible:!document.querySelector('#mainMenu').hidden,
     welcome:document.querySelector('#mainMenuTitle').textContent.trim(),
+    personal:document.querySelector('.main-menu-hero .eyebrow').textContent.trim(),
+    dedication:document.querySelector('.main-menu-dedication span').textContent.trim(),
     modes:document.querySelectorAll('[data-menu-mode]').length,
     menuButton:!!document.querySelector('#gameMenuButton'),
     achievements:document.querySelectorAll('#achievementList .achievement-card').length,
     installVisible:!document.querySelector('.main-menu-header [data-install-app]').hidden
   }))()`);
   assert.equal(mainMenu.visible, true, 'Returning players must land on the main menu');
-  assert.match(mainMenu.welcome, /Edmundas/, 'The main menu must make the Edmundas dedication prominent');
+  assert.doesNotMatch(mainMenu.welcome, /Edmund/i, 'The returning greeting must not identify the player as Edmundas');
+  assert.doesNotMatch(mainMenu.personal, /Edmund/i, 'The player space must remain neutral for every user');
+  assert.match(mainMenu.dedication, /Edmundas/, 'Edmundas must remain credited in the separate dedication badge');
   assert.equal(mainMenu.modes, 6, 'The main menu must expose all six game modes');
   assert.equal(mainMenu.menuButton, true, 'Gameplay must provide an explicit main-menu action');
   assert.equal(mainMenu.achievements, 40, 'The complete achievement collection must render');
@@ -458,7 +462,7 @@ try {
   await cdp.call('Emulation.setDeviceMetricsOverride', { width:1440, height:1000, deviceScaleFactor:1, mobile:false });
   await delay(250);
   await screenshot('desktop-gameplay-1440x1000.png');
-  console.log(`Browser smoke passed: first-launch language selection, Edmundas menu, Smart Notes, hints, PWA, Academy, backup, and responsive layouts.`);
+  console.log(`Browser smoke passed: neutral returning-player menu, Edmundas dedication, Smart Notes, hints, PWA, Academy, backup, and responsive layouts.`);
 } finally {
   cdp?.close();
   browser.kill();
