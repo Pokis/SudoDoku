@@ -31,9 +31,9 @@ const elements = {
   themeGrid: $('#themeGrid'), boardStyleGrid: $('#boardStyleGrid'),
   pwaSummary: $('#pwaSummary'), pwaConnection: $('#pwaConnection'), pwaCache: $('#pwaCache'), pwaVersion: $('#pwaVersion'), pwaInstallState: $('#pwaInstallState'),
   pwaInstallButton: $('#pwaInstallButton'), pwaCheckButton: $('#pwaCheckButton'), pwaRepairButton: $('#pwaRepairButton'), updateBanner: $('#updateBanner'), updateAction: $('#updateAction'), updateDismiss: $('#updateDismiss'), progressEventStack: $('#progressEventStack'),
-  introScreen: $('#introScreen'), introLanguage: $('#introLanguage'), introStart: $('#introStart'), miniBoard: $('#miniBoard'),
+  introScreen: $('#introScreen'), languageLaunch: $('#languageLaunch'), introCard: $('#introCard'), languageChoiceGrid: $('#languageChoiceGrid'), languageLaunchCurrent: $('#languageLaunchCurrent'), languageContinue: $('#languageContinue'), introLanguage: $('#introLanguage'), introStart: $('#introStart'), miniBoard: $('#miniBoard'),
   replayButton: $('#replayButton'), replayDialog: $('#replayDialog'), replayClose: $('#replayClose'), replayBoard: $('#replayBoard'), replayRange: $('#replayRange'), replayPlay: $('#replayPlay'), replayStep: $('#replayStep'), replayCaption: $('#replayCaption'),
-  academyButton: $('#academyButton'), academySettingsButton: $('#academySettingsButton'), academyDialog: $('#academyDialog'), academyClose: $('#academyClose'), academyCardProgress: $('#academyCardProgress'), academySettingsProgress: $('#academySettingsProgress'), academyCompleteCount: $('#academyCompleteCount'), academyProgressBar: $('#academyProgressBar'), academyLessonList: $('#academyLessonList'), academyLessonLevel: $('#academyLessonLevel'), academyLessonReward: $('#academyLessonReward'), academyLessonTitle: $('#academyLessonTitle'), academyLessonIntro: $('#academyLessonIntro'), academyBoard: $('#academyBoard'), academySteps: $('#academySteps'), academyQuestion: $('#academyQuestion'), academyChoices: $('#academyChoices'), academyFeedback: $('#academyFeedback'), academyNextButton: $('#academyNextButton'),
+  academyButton: $('#academyButton'), academySettingsButton: $('#academySettingsButton'), academyDialog: $('#academyDialog'), academyClose: $('#academyClose'), academyCardProgress: $('#academyCardProgress'), academySettingsProgress: $('#academySettingsProgress'), academyCompleteCount: $('#academyCompleteCount'), academyProgressBar: $('#academyProgressBar'), academyLessonList: $('#academyLessonList'), academyStage: $('#academyStage'), academyRules: $('#academyRules'), academyRulesStart: $('#academyRulesStart'), academyLessonLevel: $('#academyLessonLevel'), academyLessonReward: $('#academyLessonReward'), academyLessonTitle: $('#academyLessonTitle'), academyLessonIntro: $('#academyLessonIntro'), academyBoard: $('#academyBoard'), academySteps: $('#academySteps'), academyQuestion: $('#academyQuestion'), academyChoices: $('#academyChoices'), academyFeedback: $('#academyFeedback'), academyNextButton: $('#academyNextButton'),
   backupSummary: $('#backupSummary'), backupStatus: $('#backupStatus'), backupExportButton: $('#backupExportButton'), backupRestoreButton: $('#backupRestoreButton'), backupFileInput: $('#backupFileInput'),
   mainMenu: $('#mainMenu'), menuContinueButton: $('#menuContinueButton'), menuContinueTitle: $('#menuContinueTitle'), menuContinueProgress: $('#menuContinueProgress'), menuLevel: $('#menuLevel'), menuPoints: $('#menuPoints'), menuAchievements: $('#menuAchievements'), menuLessons: $('#menuLessons'), menuAcademyButton: $('#menuAcademyButton'), menuStatsButton: $('#menuStatsButton'), menuSettingsButton: $('#menuSettingsButton'),
 };
@@ -41,17 +41,22 @@ const elements = {
 const modeWins = (summary, mode) => Number(summary.modeWins?.[mode] || 0);
 const bestTimedSolve = (summary) => Math.min(...Object.entries(summary.bestByMode || {}).filter(([mode, value]) => mode !== 'zen' && Number.isFinite(value)).map(([, value]) => value), Infinity);
 const levelFromPoints = (points) => Math.max(1, Math.floor(Number(points || 0) / 4000) + 1);
+const masteredLessons = (summary) => Array.isArray(summary.academyCompleted) ? summary.academyCompleted.length : 0;
+const discoveredTechniques = (summary) => Array.isArray(summary.techniquesDiscovered) ? summary.techniquesDiscovered.length : 0;
 const ACHIEVEMENTS = [
   { id:'first-flow', tier:'common', target:1, progress:(summary) => summary.won },
   { id:'clean-grid', tier:'common', target:1, progress:(summary) => summary.perfectWins },
   { id:'pure-logic', tier:'common', target:1, progress:(summary) => summary.pureLogicWins },
   { id:'daily-devotion', tier:'common', target:1, progress:(summary) => summary.dailyCompleted.length },
   { id:'streak-three', tier:'common', target:3, progress:(summary) => summary.maxDailyStreak },
+  { id:'academy-initiate', tier:'common', target:4, progress:masteredLessons },
   { id:'speed-focus', tier:'rare', target:1, progress:(summary) => bestTimedSolve(summary) < 300 ? 1 : 0 },
   { id:'explorer', tier:'rare', target:3, progress:(summary) => ['killer','hyper','mini'].filter((mode) => modeWins(summary, mode) > 0).length },
   { id:'mini-sprint', tier:'rare', target:1, progress:(summary) => Number(summary.bestByMode?.mini) > 0 && summary.bestByMode.mini < 90 ? 1 : 0 },
   { id:'expert-mind', tier:'rare', target:1, progress:(summary) => summary.expertWins },
   { id:'perfect-ten', tier:'rare', target:10, progress:(summary) => summary.bestPerfectStreak },
+  { id:'academy-scholar', tier:'rare', target:8, progress:masteredLessons },
+  { id:'fish-school', tier:'rare', target:2, progress:(summary) => ['xWing','swordfish'].filter((id) => summary.academyCompleted?.includes(id)).length },
   { id:'killer-adept', tier:'epic', target:25, progress:(summary) => modeWins(summary, 'killer') },
   { id:'hyper-architect', tier:'epic', target:25, progress:(summary) => modeWins(summary, 'hyper') },
   { id:'zen-master', tier:'epic', target:50, progress:(summary) => modeWins(summary, 'zen') },
@@ -61,15 +66,20 @@ const ACHIEVEMENTS = [
   { id:'weekly-ten', tier:'epic', target:10, progress:(summary) => summary.weeklyQuests },
   { id:'daily-thirty', tier:'epic', target:30, progress:(summary) => summary.maxDailyStreak },
   { id:'century', tier:'epic', target:100, progress:(summary) => summary.won },
+  { id:'academy-master', tier:'epic', target:ACADEMY_LESSONS.length, progress:masteredLessons },
+  { id:'pattern-voyager', tier:'epic', target:6, progress:discoveredTechniques },
+  { id:'logical-guide', tier:'epic', target:100, progress:(summary) => summary.logicalHints },
   { id:'perfect-century', tier:'legendary', target:100, progress:(summary) => summary.perfectWins },
   { id:'logic-legend', tier:'legendary', target:250, progress:(summary) => summary.pureLogicWins },
   { id:'weekly-fifty', tier:'legendary', target:50, progress:(summary) => summary.weeklyQuests },
   { id:'level-twenty-five', tier:'legendary', target:25, progress:(summary) => levelFromPoints(summary.points) },
   { id:'deep-focus', tier:'legendary', target:360000, progress:(summary) => summary.totalSeconds, format:'hours' },
   { id:'daily-century', tier:'legendary', target:100, progress:(summary) => summary.maxDailyStreak },
+  { id:'technique-librarian', tier:'legendary', target:ACADEMY_LESSONS.length, progress:discoveredTechniques },
   { id:'year-of-focus', tier:'mythic', target:365, progress:(summary) => summary.maxDailyStreak },
   { id:'grandmaster', tier:'mythic', target:1000, progress:(summary) => summary.won },
   { id:'level-fifty', tier:'mythic', target:50, progress:(summary) => levelFromPoints(summary.points) },
+  { id:'deduction-sage', tier:'mythic', target:1000, progress:(summary) => summary.logicalHints },
   { id:'night-owl', tier:'rare', target:1, progress:(summary) => summary.nightWins, secret:true },
   { id:'close-call', tier:'epic', target:1, progress:(summary) => summary.closeCallWins, secret:true },
   { id:'no-pencil', tier:'legendary', target:1, progress:(summary) => summary.noPencilWins, secret:true },
@@ -83,10 +93,10 @@ const defaultStats = {
   totalHints:0, perfectWins:0, pureLogicWins:0, expertWins:0, expertPureWins:0,
   currentPerfectStreak:0, bestPerfectStreak:0, modeWins:{ classic:0, daily:0, killer:0, hyper:0, mini:0, zen:0 },
   nightWins:0, closeCallWins:0, noPencilWins:0, patientWins:0, achievementHistory:[], nearNotified:[],
-  academyCompleted:[],
+  academyCompleted:[], techniquesDiscovered:[], logicalHints:0,
 };
 const browserLanguage = navigator.language?.split('-')[0];
-const defaultPrefs = { theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', palette: 'lavender', boardStyle: 'classic', sound: true, language: LOCALES.some(({ code }) => code === browserLanguage) ? browserLanguage : 'en', haptics: true, autoPause: true, onboarded: false };
+const defaultPrefs = { theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', palette: 'lavender', boardStyle: 'classic', sound: true, language: LOCALES.some(({ code }) => code === browserLanguage) ? browserLanguage : 'en', haptics: true, autoPause: true, onboarded: false, languageConfirmed: false, academyRulesSeen: false };
 let prefs = { ...defaultPrefs, ...readJSON(PREFS_KEY, {}) };
 let stats = { ...defaultStats, ...readJSON(STATS_KEY, {}) };
 stats.dailyCompleted = Array.isArray(stats.dailyCompleted) ? stats.dailyCompleted : [];
@@ -94,6 +104,7 @@ stats.achievements = Array.isArray(stats.achievements) ? stats.achievements : []
 stats.achievementHistory = Array.isArray(stats.achievementHistory) ? stats.achievementHistory : [];
 stats.nearNotified = Array.isArray(stats.nearNotified) ? stats.nearNotified : [];
 stats.academyCompleted = Array.isArray(stats.academyCompleted) ? stats.academyCompleted.filter((id) => ACADEMY_LESSONS.some((lesson) => lesson.id === id)) : [];
+stats.techniquesDiscovered = Array.isArray(stats.techniquesDiscovered) ? [...new Set(stats.techniquesDiscovered.filter((id) => ACADEMY_LESSONS.some((lesson) => lesson.id === id)))] : [];
 stats.best = stats.best && typeof stats.best === 'object' ? stats.best : {};
 stats.bestByMode = { ...defaultStats.bestByMode, ...(stats.bestByMode && typeof stats.bestByMode === 'object' ? stats.bestByMode : {}) };
 stats.modeWins = { ...defaultStats.modeWins, ...(stats.modeWins && typeof stats.modeWins === 'object' ? stats.modeWins : {}) };
@@ -107,7 +118,7 @@ let replayFrames = [];
 let swRegistration;
 let deferredInstallPrompt;
 let updateRequested = false;
-let academyCurrentLesson = ACADEMY_LESSONS[0].id;
+let academyCurrentLesson = prefs.academyRulesSeen ? ACADEMY_LESSONS[0].id : 'rules';
 let pendingAcademyEvents = [];
 
 const t = (key, variables) => translate(prefs.language, key, variables);
@@ -235,7 +246,7 @@ function sanitizeBackupPrefs(raw) {
   if (THEME_PACKS.some(({ id }) => id === raw.palette)) safe.palette = raw.palette;
   if (BOARD_STYLES.some(({ id }) => id === raw.boardStyle)) safe.boardStyle = raw.boardStyle;
   if (LOCALES.some(({ code }) => code === raw.language)) safe.language = raw.language;
-  ['sound','haptics','autoPause','onboarded'].forEach((key) => { if (typeof raw[key] === 'boolean') safe[key] = raw[key]; });
+  ['sound','haptics','autoPause','onboarded','languageConfirmed','academyRulesSeen'].forEach((key) => { if (typeof raw[key] === 'boolean') safe[key] = raw[key]; });
   if (Number.isFinite(Date.parse(raw.lastBackupAt))) safe.lastBackupAt = raw.lastBackupAt;
   safe.lastRestoreAt = new Date().toISOString();
   return safe;
@@ -251,6 +262,7 @@ function sanitizeBackupStats(raw) {
   safe.achievements = Array.isArray(raw.achievements) ? [...new Set(raw.achievements.filter((id) => ACHIEVEMENTS.some((achievement) => achievement.id === id)))] : [];
   safe.nearNotified = Array.isArray(raw.nearNotified) ? [...new Set(raw.nearNotified.filter((id) => ACHIEVEMENTS.some((achievement) => achievement.id === id)))] : [];
   safe.academyCompleted = Array.isArray(raw.academyCompleted) ? [...new Set(raw.academyCompleted.filter((id) => ACADEMY_LESSONS.some((lesson) => lesson.id === id)))] : [];
+  safe.techniquesDiscovered = Array.isArray(raw.techniquesDiscovered) ? [...new Set(raw.techniquesDiscovered.filter((id) => ACADEMY_LESSONS.some((lesson) => lesson.id === id)))] : [];
   safe.achievementHistory = Array.isArray(raw.achievementHistory) ? raw.achievementHistory.filter((entry) => entry && ACHIEVEMENTS.some((achievement) => achievement.id === entry.id) && Number.isFinite(Date.parse(entry.unlockedAt))).slice(0, 100) : [];
   safe.best = Object.fromEntries(Object.entries(raw.best || {}).filter(([, value]) => Number.isFinite(value) && value >= 0));
   safe.bestByMode = Object.fromEntries(Object.entries(raw.bestByMode || {}).filter(([, value]) => Number.isFinite(value) && value >= 0));
@@ -325,10 +337,42 @@ function populateLanguageSelect(select) {
   select.value = prefs.language;
 }
 
+function renderLanguageChoices() {
+  if (!elements.languageChoiceGrid) return;
+  const selectedLocale = LOCALES.find(({ code }) => code === prefs.language) || LOCALES[0];
+  elements.languageChoiceGrid.replaceChildren(...LOCALES.map(({ code, name }) => {
+    const button = document.createElement('button');
+    const codeLabel = document.createElement('span');
+    const label = document.createElement('span');
+    const check = document.createElement('span');
+    button.type = 'button';
+    button.className = `language-choice${code === prefs.language ? ' selected' : ''}`;
+    button.dataset.language = code;
+    button.setAttribute('role', 'radio');
+    button.setAttribute('aria-checked', String(code === prefs.language));
+    button.setAttribute('aria-label', name);
+    codeLabel.className = 'language-choice-code';
+    codeLabel.textContent = code.toUpperCase();
+    label.className = 'language-choice-label';
+    label.textContent = name;
+    check.className = 'language-choice-check';
+    check.setAttribute('aria-hidden', 'true');
+    check.textContent = '✓';
+    button.append(codeLabel, label, check);
+    button.addEventListener('click', () => {
+      setLanguage(code, false);
+      requestAnimationFrame(() => elements.languageChoiceGrid.querySelector(`[data-language="${code}"]`)?.focus());
+    });
+    return button;
+  }));
+  elements.languageLaunchCurrent.textContent = t('languageLaunch.selected', { language:selectedLocale.name });
+}
+
 function applyLocale(refresh = true) {
   applyDocumentTranslations(prefs.language);
   populateLanguageSelect(elements.introLanguage);
   populateLanguageSelect(elements.settingsLanguage);
+  renderLanguageChoices();
   elements.languageCode.textContent = prefs.language.toUpperCase();
   elements.settingsButton.setAttribute('aria-label', t('common.settings'));
   elements.statsButton.setAttribute('aria-label', t('common.statistics'));
@@ -340,7 +384,10 @@ function applyLocale(refresh = true) {
   elements.updateDismiss.setAttribute('aria-label', t('pwa.dismiss'));
   elements.homeButton.setAttribute('aria-label', t('mainMenu.open'));
   if (refresh && state) { render(); updateStatsUI(); }
-  if (elements.academyDialog.open) renderAcademyLesson();
+  if (elements.academyDialog.open) {
+    if (academyCurrentLesson === 'rules') renderAcademyRules();
+    else renderAcademyLesson();
+  }
   if (elements.pwaSummary) void updatePwaUI();
 }
 
@@ -361,13 +408,27 @@ function initializeMiniBoard() {
 function showIntro() {
   elements.settingsDialog.close();
   closeMainMenu(false);
+  const needsLanguageChoice = !prefs.onboarded && !prefs.languageConfirmed;
+  elements.languageLaunch.hidden = !needsLanguageChoice;
+  elements.introCard.hidden = needsLanguageChoice;
   elements.introScreen.hidden = false;
   document.body.classList.add('onboarding-open');
-  elements.introLanguage.focus({ preventScroll: true });
+  requestAnimationFrame(() => {
+    if (needsLanguageChoice) elements.languageChoiceGrid.querySelector('[aria-checked="true"]')?.focus({ preventScroll: true });
+    else elements.introLanguage.focus({ preventScroll: true });
+  });
+}
+
+function confirmLanguageChoice() {
+  prefs.languageConfirmed = true;
+  savePrefs();
+  elements.languageLaunch.hidden = true;
+  elements.introCard.hidden = false;
+  requestAnimationFrame(() => elements.introStart.focus({ preventScroll: true }));
 }
 
 function finishIntro() {
-  prefs.onboarded = true; savePrefs();
+  prefs.onboarded = true; prefs.languageConfirmed = true; savePrefs();
   elements.introScreen.hidden = true;
   document.body.classList.remove('onboarding-open');
   elements.board.querySelector('.cell:not(.given)')?.focus({ preventScroll: true });
@@ -609,6 +670,7 @@ function useHint() {
   hint.cellsLabel = (hint.cells || []).map(labelCell).join(', ');
   hint.targetsLabel = [...new Set((hint.eliminations || []).map((item) => labelCell(item.index)))].slice(0, 4).join(', ');
   hint.pairLabel = hint.pair?.join(' & ');
+  hint.valuesLabel = hint.values?.join(', ');
   hint.linesLabel = hint.lines?.join(' & ');
   hint.positionsLabel = hint.positions?.join(' & ');
   if (hint.unitType) hint.unitLabel = t(`unit.${hint.unitType}`, { number: hint.unitNumber });
@@ -628,6 +690,17 @@ function useHint() {
   }
   state.hints -= 1;
   state.hintsUsed = (state.hintsUsed || 0) + 1;
+  if (hint.technique !== 'reveal') {
+    const level = playerLevel();
+    stats.logicalHints = Number(stats.logicalHints || 0) + 1;
+    if (!stats.techniquesDiscovered.includes(hint.technique)) stats.techniquesDiscovered.push(hint.technique);
+    const unlocked = unlockAchievements();
+    saveStats();
+    if (unlocked.length) {
+      updateStatsUI();
+      queueProgressEvents(progressionEvents(unlocked, level, level, []));
+    }
+  }
   state.lastHint = hint;
   state.seenTechniqueSignatures.push(signature);
   render();
@@ -965,7 +1038,18 @@ function updateAcademyProgressUI() {
 }
 
 function renderAcademyLessonList() {
-  elements.academyLessonList.replaceChildren(...ACADEMY_LESSONS.map((lesson, lessonIndex) => {
+  const rulesButton = document.createElement('button');
+  rulesButton.type = 'button'; rulesButton.dataset.academyRules = '';
+  rulesButton.className = `academy-rules-link${academyCurrentLesson === 'rules' ? ' active' : ''}`;
+  const rulesIcon = document.createElement('span'); rulesIcon.textContent = '?';
+  const rulesCopy = document.createElement('div');
+  const rulesLabel = document.createElement('small'); rulesLabel.textContent = t('academy.rules.short');
+  const rulesTitle = document.createElement('strong'); rulesTitle.textContent = t('academy.rules.nav');
+  rulesCopy.append(rulesLabel, rulesTitle);
+  const rulesStatus = document.createElement('em'); rulesStatus.textContent = '›';
+  rulesButton.append(rulesIcon, rulesCopy, rulesStatus);
+
+  const lessonButtons = ACADEMY_LESSONS.map((lesson, lessonIndex) => {
     const button = document.createElement('button');
     button.type = 'button'; button.dataset.lesson = lesson.id;
     button.className = `${lesson.id === academyCurrentLesson ? 'active ' : ''}${stats.academyCompleted.includes(lesson.id) ? 'complete' : ''}`.trim();
@@ -976,13 +1060,23 @@ function renderAcademyLessonList() {
     copy.append(number, title);
     const status = document.createElement('em'); status.textContent = stats.academyCompleted.includes(lesson.id) ? '✓' : '›';
     button.append(icon, copy, status); return button;
-  }));
+  });
+  elements.academyLessonList.replaceChildren(rulesButton, ...lessonButtons);
+}
+
+function renderAcademyRules() {
+  academyCurrentLesson = 'rules';
+  renderAcademyLessonList(); updateAcademyProgressUI();
+  elements.academyStage.classList.add('show-rules');
+  elements.academyRules.hidden = false;
 }
 
 function renderAcademyLesson(id = academyCurrentLesson) {
   academyCurrentLesson = ACADEMY_LESSONS.some((lesson) => lesson.id === id) ? id : ACADEMY_LESSONS[0].id;
   const lesson = getAcademyLesson(academyCurrentLesson);
   renderAcademyLessonList(); updateAcademyProgressUI();
+  elements.academyStage.classList.remove('show-rules');
+  elements.academyRules.hidden = true;
   elements.academyLessonLevel.textContent = t(`academy.level.${lesson.level}`);
   elements.academyLessonReward.textContent = stats.academyCompleted.includes(lesson.id) ? t('academy.masteredLabel') : `+${lesson.reward} XP`;
   elements.academyLessonTitle.textContent = t(`academy.${lesson.id}.title`);
@@ -1009,7 +1103,7 @@ function renderAcademyLesson(id = academyCurrentLesson) {
       for (let candidate = 1; candidate <= 9; candidate += 1) {
         const mark = document.createElement('span');
         if (lesson.candidates[index].includes(candidate)) mark.textContent = candidate;
-        const isPattern = patternCells.has(index) && (lesson.hint.value === candidate || lesson.hint.pair?.includes(candidate));
+        const isPattern = patternCells.has(index) && (lesson.hint.value === candidate || lesson.hint.pair?.includes(candidate) || lesson.hint.values?.includes(candidate));
         const isElimination = lesson.hint.eliminations?.some((item) => item.index === index && item.value === candidate);
         if (isPattern) mark.classList.add('pattern');
         if (isElimination) mark.classList.add('elimination');
@@ -1047,6 +1141,7 @@ function answerAcademyQuestion(event) {
   if (!stats.academyCompleted.includes(lesson.id)) {
     const levelBefore = playerLevel();
     stats.academyCompleted.push(lesson.id);
+    if (!stats.techniquesDiscovered.includes(lesson.id)) stats.techniquesDiscovered.push(lesson.id);
     stats.points += lesson.reward;
     const unlocked = unlockAchievements();
     const events = [
@@ -1062,9 +1157,19 @@ function answerAcademyQuestion(event) {
 function openAcademy() {
   if (elements.settingsDialog.open) elements.settingsDialog.close();
   const firstIncomplete = ACADEMY_LESSONS.find((lesson) => !stats.academyCompleted.includes(lesson.id));
-  academyCurrentLesson = firstIncomplete?.id || academyCurrentLesson;
-  renderAcademyLesson();
+  if (!prefs.academyRulesSeen) renderAcademyRules();
+  else {
+    academyCurrentLesson = firstIncomplete?.id || academyCurrentLesson;
+    renderAcademyLesson();
+  }
   elements.academyDialog.showModal();
+}
+
+function beginAcademyLessons() {
+  prefs.academyRulesSeen = true;
+  savePrefs();
+  const firstIncomplete = ACADEMY_LESSONS.find((lesson) => !stats.academyCompleted.includes(lesson.id));
+  renderAcademyLesson(firstIncomplete?.id || ACADEMY_LESSONS[0].id);
 }
 
 function nextAcademyLesson() {
@@ -1338,7 +1443,7 @@ async function updatePwaUI() {
   elements.pwaCache.textContent = t(supported && (navigator.serviceWorker.controller || swRegistration?.active) ? 'pwa.ready' : 'pwa.unavailable');
   const worker = swRegistration?.waiting || swRegistration?.active || navigator.serviceWorker?.controller;
   const version = supported ? await messageServiceWorker(worker, 'GET_VERSION') : null;
-  elements.pwaVersion.textContent = version?.version || 'v13';
+  elements.pwaVersion.textContent = version?.version || 'v16';
   elements.pwaSummary.textContent = swRegistration?.waiting ? t('pwa.summaryUpdate') : t('pwa.summaryReady');
 }
 
@@ -1418,6 +1523,16 @@ function bindEvents() {
   elements.settingsDone.addEventListener('click', () => elements.settingsDialog.close());
   elements.settingsLanguage.addEventListener('change', (event) => setLanguage(event.target.value));
   elements.introLanguage.addEventListener('change', (event) => setLanguage(event.target.value, false));
+  elements.languageChoiceGrid.addEventListener('keydown', (event) => {
+    if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+    const currentIndex = Math.max(0, LOCALES.findIndex(({ code }) => code === prefs.language));
+    const direction = ['ArrowUp','ArrowLeft'].includes(event.key) ? -1 : 1;
+    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? LOCALES.length - 1 : (currentIndex + direction + LOCALES.length) % LOCALES.length;
+    setLanguage(LOCALES[nextIndex].code, false);
+    elements.languageChoiceGrid.querySelector(`[data-language="${LOCALES[nextIndex].code}"]`)?.focus();
+    event.preventDefault();
+  });
+  elements.languageContinue.addEventListener('click', confirmLanguageChoice);
   elements.hapticsToggle.addEventListener('change', (event) => { prefs.haptics = event.target.checked; savePrefs(); haptic(30); });
   elements.autoPauseToggle.addEventListener('change', (event) => { prefs.autoPause = event.target.checked; savePrefs(); });
   elements.replayIntroButton.addEventListener('click', showIntro);
@@ -1427,8 +1542,13 @@ function bindEvents() {
   elements.academyDialog.addEventListener('close', () => {
     if (pendingAcademyEvents.length) queueProgressEvents(pendingAcademyEvents.splice(0));
   });
-  elements.academyLessonList.addEventListener('click', (event) => { const button = event.target.closest('[data-lesson]'); if (button) renderAcademyLesson(button.dataset.lesson); });
+  elements.academyLessonList.addEventListener('click', (event) => {
+    if (event.target.closest('[data-academy-rules]')) { renderAcademyRules(); return; }
+    const button = event.target.closest('[data-lesson]');
+    if (button) renderAcademyLesson(button.dataset.lesson);
+  });
   elements.academyChoices.addEventListener('click', answerAcademyQuestion);
+  elements.academyRulesStart.addEventListener('click', beginAcademyLessons);
   elements.academyNextButton.addEventListener('click', nextAcademyLesson);
   elements.backupExportButton.addEventListener('click', exportBackup);
   elements.backupRestoreButton.addEventListener('click', () => elements.backupFileInput.click());

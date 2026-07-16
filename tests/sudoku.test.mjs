@@ -67,10 +67,26 @@ test('technique hints explain naked-pair eliminations', () => {
 });
 
 test('technique hints identify an X-Wing and its eliminations', () => {
-  const board = grid('...7............7.2.......6....6.8........5....8..7...7......8........4...9......');
-  const hint = findTechniqueHint(board, techniqueSolution);
+  const board = grid('64...2..8...6......8......6.......9............8.9.........3.85...........9..6.2.');
+  const hint = findTechniqueHint(board, techniqueSolution, 'classic', 'xWing');
   assert.equal(hint.technique, 'xWing');
-  assert.equal(hint.value, 7);
+  assert.equal(hint.value, 9);
   assert.equal(hint.cells.length, 4);
   assert.ok(hint.eliminations.length >= 1);
+});
+
+test('advanced hint engine detects triples, wings, towers, and fish', () => {
+  const positions = {
+    nakedTriple:'...7.2...1.5.....42.741.3...7256..9..6....5.7...3..46.7.......5.31..56.94.9.8.7.3',
+    hiddenTriple:'.4.75.9.8195....7..8.4...563.2.6.8...6.82.5....83..4627.6...1..831....49......7.3',
+    xyWing:'6.....9.8.9....27.2.........7.....91.6.8...375.8....6..2.9..1..8......4..59...7.3',
+    skyscraper:'.4...2.18...638..4287.......7.......96.8.1....1.397..2.2.9..18....2..6.......67..',
+    swordfish:'64.........5.3...4.....93..37....89..6.....37..8...4..7..9.3.8.......64...9.8....',
+  };
+  for (const [technique, text] of Object.entries(positions)) {
+    const hint = findTechniqueHint(grid(text), techniqueSolution, 'classic', technique);
+    assert.equal(hint.technique, technique);
+    assert.ok(hint.cells.length >= 3);
+    assert.ok(hint.eliminations.length >= 1);
+  }
 });

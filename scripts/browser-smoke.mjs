@@ -110,16 +110,76 @@ try {
   };
 
   await waitFor("document.querySelectorAll('.cell').length > 0");
-  const dedication = await evaluate(`(() => ({
+  await waitFor("!document.querySelector('#languageLaunch').hidden");
+  const languageLaunch = await evaluate(`(() => ({
     title:document.title,
-    intro:document.querySelector('.intro-dedication strong').textContent.trim()
+    visible:!document.querySelector('#languageLaunch').hidden,
+    introHidden:document.querySelector('#introCard').hidden,
+    choices:document.querySelectorAll('#languageChoiceGrid [data-language]').length,
+    selected:document.querySelector('#languageChoiceGrid [aria-checked="true"]')?.dataset.language
   }))()`);
-  assert.match(dedication.title, /Edmundas/);
-  assert.match(dedication.intro, /Edmundas/);
+  assert.match(languageLaunch.title, /Edmundas/);
+  assert.equal(languageLaunch.visible, true, 'First launch must begin with a dedicated language page');
+  assert.equal(languageLaunch.introHidden, true, 'The introduction must wait until language is confirmed');
+  assert.equal(languageLaunch.choices, 5, 'Every supported language must be clearly offered');
+  assert.ok(languageLaunch.selected, 'The detected language must be visibly preselected');
   await delay(700);
+  await screenshot('desktop-language-selection-1440x1000.png');
+  await cdp.call('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:true });
+  await delay(250);
+  const mobileLanguageLaunch = await evaluate(`(() => {
+    const gate = document.querySelector('#languageLaunch').getBoundingClientRect();
+    const continueButton = document.querySelector('#languageContinue').getBoundingClientRect();
+    return {
+      width:gate.width,
+      left:gate.left,
+      choices:document.querySelectorAll('#languageChoiceGrid [data-language]').length,
+      continueVisible:continueButton.top >= 0 && continueButton.bottom <= innerHeight,
+      horizontalOverflow:document.documentElement.scrollWidth > innerWidth
+    };
+  })()`);
+  assert.equal(mobileLanguageLaunch.choices, 5);
+  assert.ok(mobileLanguageLaunch.width >= 389 && Math.abs(mobileLanguageLaunch.left) < 1, 'The first-launch page must fill a phone viewport');
+  assert.equal(mobileLanguageLaunch.continueVisible, true, 'Language confirmation must be visible without hunting on a standard phone');
+  assert.equal(mobileLanguageLaunch.horizontalOverflow, false, 'The mobile language page must not overflow horizontally');
+  await screenshot('mobile-language-selection-390x844.png');
+  await cdp.call('Emulation.setDeviceMetricsOverride', { width:1440, height:1000, deviceScaleFactor:1, mobile:false });
+  await delay(150);
+  const lithuanianChoice = await evaluate(`(() => {
+    document.querySelector('#languageChoiceGrid [data-language="lt"]').click();
+    return {
+      locale:document.documentElement.lang,
+      selected:document.querySelector('#languageChoiceGrid [data-language="lt"]').getAttribute('aria-checked'),
+      heading:document.querySelector('#languageLaunchTitle').textContent.trim(),
+      current:document.querySelector('#languageLaunchCurrent').textContent.trim()
+    };
+  })()`);
+  assert.equal(lithuanianChoice.locale, 'lt', 'Choosing Lithuanian must translate the page immediately');
+  assert.equal(lithuanianChoice.selected, 'true');
+  assert.match(lithuanianChoice.heading, /Pasirink savo kalbą/);
+  assert.match(lithuanianChoice.current, /Lietuvių/);
+  const confirmedLanguage = await evaluate(`(() => {
+    document.querySelector('#languageContinue').click();
+    const prefs = JSON.parse(localStorage.getItem('sudodoku-prefs-v1'));
+    return {
+      gateHidden:document.querySelector('#languageLaunch').hidden,
+      introVisible:!document.querySelector('#introCard').hidden,
+      introLanguage:document.querySelector('#introLanguage').value,
+      dedication:document.querySelector('.intro-dedication strong').textContent.trim(),
+      language:prefs.language,
+      confirmed:prefs.languageConfirmed
+    };
+  })()`);
+  assert.equal(confirmedLanguage.gateHidden, true);
+  assert.equal(confirmedLanguage.introVisible, true);
+  assert.equal(confirmedLanguage.introLanguage, 'lt');
+  assert.match(confirmedLanguage.dedication, /Edmund/);
+  assert.equal(confirmedLanguage.language, 'lt');
+  assert.equal(confirmedLanguage.confirmed, true, 'The explicit language confirmation must persist');
+  await delay(300);
   await screenshot('desktop-edmundas-welcome-1440x1000.png');
   await evaluate("navigator.serviceWorker.ready.then(() => true)", true);
-  await evaluate("localStorage.setItem('sudodoku-prefs-v1', JSON.stringify({ onboarded:true, language:'en' }))");
+  await evaluate("localStorage.setItem('sudodoku-prefs-v1', JSON.stringify({ onboarded:true, languageConfirmed:true, language:'en', academyRulesSeen:false }))");
   const loaded = cdp.event('Page.loadEventFired');
   await cdp.call('Page.navigate', { url:baseUrl });
   await loaded;
@@ -128,12 +188,14 @@ try {
     visible:!document.querySelector('#mainMenu').hidden,
     welcome:document.querySelector('#mainMenuTitle').textContent.trim(),
     modes:document.querySelectorAll('[data-menu-mode]').length,
-    menuButton:!!document.querySelector('#gameMenuButton')
+    menuButton:!!document.querySelector('#gameMenuButton'),
+    achievements:document.querySelectorAll('#achievementList .achievement-card').length
   }))()`);
   assert.equal(mainMenu.visible, true, 'Returning players must land on the main menu');
   assert.match(mainMenu.welcome, /Edmundas/, 'The main menu must make the Edmundas dedication prominent');
   assert.equal(mainMenu.modes, 6, 'The main menu must expose all six game modes');
   assert.equal(mainMenu.menuButton, true, 'Gameplay must provide an explicit main-menu action');
+  assert.equal(mainMenu.achievements, 40, 'The complete achievement collection must render');
   const controlled = await evaluate(`new Promise((resolve) => {
     if (navigator.serviceWorker.controller) { resolve(true); return; }
     navigator.serviceWorker.addEventListener('controllerchange', () => resolve(true), { once:true });
@@ -199,6 +261,22 @@ try {
   await evaluate("document.querySelector('#settingsButton').click()");
   await delay(200);
   await screenshot('mobile-edmundas-settings-390x844.png');
+  const settingsLanguageSwitch = await evaluate(`(() => {
+    const select = document.querySelector('#settingsLanguage');
+    select.value = 'de';
+    select.dispatchEvent(new Event('change', { bubbles:true }));
+    const changedLocale = document.documentElement.lang;
+    const changedPreference = JSON.parse(localStorage.getItem('sudodoku-prefs-v1')).language;
+    select.value = 'en';
+    select.dispatchEvent(new Event('change', { bubbles:true }));
+    return {
+      changedLocale,
+      changedPreference,
+      restoredLocale:document.documentElement.lang,
+      restoredPreference:JSON.parse(localStorage.getItem('sudodoku-prefs-v1')).language
+    };
+  })()`);
+  assert.deepEqual(settingsLanguageSwitch, { changedLocale:'de', changedPreference:'de', restoredLocale:'en', restoredPreference:'en' }, 'Settings must keep language switching available and persistent');
   const lockedNotice = await evaluate(`(() => {
     const lockedTheme = document.querySelector('.theme-option.locked');
     const lockedStyle = document.querySelector('.style-option.locked');
@@ -232,12 +310,14 @@ try {
     dialog:document.querySelector('#settingsDialog').open,
     cache:document.querySelector('#pwaCache').textContent.trim(),
     version:document.querySelector('#pwaVersion').textContent.trim(),
-    serviceWorker:!!navigator.serviceWorker.controller
+    serviceWorker:!!navigator.serviceWorker.controller,
+    languageOptions:document.querySelectorAll('#settingsLanguage option').length
   }))()`);
   assert.equal(pwa.dialog, true, 'Settings must open on mobile');
   assert.ok(pwa.cache, 'PWA cache diagnostic must be visible');
   assert.match(pwa.version, /^v\d+$/);
   assert.equal(pwa.serviceWorker, true, 'PWA diagnostics must report an active controller');
+  assert.equal(pwa.languageOptions, 5, 'Settings must keep every language available after onboarding');
   assert.ok(await evaluate("!!document.querySelector('#backupExportButton') && !!document.querySelector('#backupRestoreButton')"), 'Backup and restore controls must be present');
   assert.match(await evaluate("document.querySelector('.settings-dedication strong').textContent"), /Edmundas/, 'Settings must preserve the personal dedication');
   await screenshot('mobile-pwa-center-390x844.png');
@@ -252,26 +332,81 @@ try {
   assert.deepEqual(menuReturn, { opened:true, closed:true }, 'Players must be able to enter and leave the main menu from a game');
   const academy = await evaluate(`(() => {
     document.querySelector('#academyButton').click();
-    return { dialog:document.querySelector('#academyDialog').open, lessons:document.querySelectorAll('#academyLessonList button').length, cells:document.querySelectorAll('#academyBoard .academy-cell').length, choices:document.querySelectorAll('#academyChoices button').length };
+    return {
+      dialog:document.querySelector('#academyDialog').open,
+      rules:!document.querySelector('#academyRules').hidden,
+      rulesCards:document.querySelectorAll('.academy-rules-grid article').length,
+      lessons:document.querySelectorAll('#academyLessonList [data-lesson]').length,
+      rulesLink:!!document.querySelector('#academyLessonList [data-academy-rules]')
+    };
   })()`);
   assert.equal(academy.dialog, true, 'Technique Academy must open from the game');
-  assert.equal(academy.lessons, 4);
-  assert.equal(academy.cells, 81);
-  assert.equal(academy.choices, 3);
+  assert.equal(academy.rules, true, 'The short rules primer must appear before the first lesson');
+  assert.equal(academy.rulesCards, 4, 'The primer must explain the goal, rows, columns, and boxes');
+  assert.equal(academy.lessons, 12);
+  assert.equal(academy.rulesLink, true, 'Quick rules must remain available from the lesson list');
+  await delay(200);
+  await screenshot('mobile-sudoku-rules-390x844.png');
+  const firstLesson = await evaluate(`(() => {
+    document.querySelector('#academyRulesStart').click();
+    const prefs = JSON.parse(localStorage.getItem('sudodoku-prefs-v1'));
+    return {
+      rulesHidden:document.querySelector('#academyRules').hidden,
+      active:document.querySelector('#academyLessonList [data-lesson].active')?.dataset.lesson,
+      cells:document.querySelectorAll('#academyBoard .academy-cell').length,
+      choices:document.querySelectorAll('#academyChoices button').length,
+      remembered:prefs.academyRulesSeen
+    };
+  })()`);
+  assert.equal(firstLesson.rulesHidden, true);
+  assert.equal(firstLesson.active, 'nakedSingle');
+  assert.equal(firstLesson.remembered, true, 'Completing the primer must persist locally');
+  assert.equal(firstLesson.cells, 81);
+  assert.equal(firstLesson.choices, 3);
   const academyResult = await evaluate(`(() => {
     document.querySelector('#academyChoices [data-answer="6"]').click();
     const stored = JSON.parse(localStorage.getItem('sudodoku-stats-v1'));
-    return { feedback:document.querySelector('#academyFeedback').classList.contains('correct'), completed:stored.academyCompleted.includes('nakedSingle') };
+    return { feedback:document.querySelector('#academyFeedback').classList.contains('correct'), completed:stored.academyCompleted.includes('nakedSingle'), discovered:stored.techniquesDiscovered.includes('nakedSingle') };
   })()`);
   assert.equal(academyResult.feedback, true, 'Correct Academy answers need visible feedback');
   assert.equal(academyResult.completed, true, 'Academy mastery must persist locally');
+  assert.equal(academyResult.discovered, true, 'Academy lessons must contribute to technique achievements');
+  await delay(350);
   await screenshot('mobile-technique-academy-390x844.png');
-  const academyPatterns = await evaluate(`(() => Object.fromEntries(['nakedSingle','hiddenSingle','nakedPair','xWing'].map((id) => {
+  const academyPatterns = await evaluate(`(() => Object.fromEntries(['nakedSingle','hiddenSingle','pointingPair','boxLineReduction','nakedPair','hiddenPair','nakedTriple','hiddenTriple','xWing','xyWing','skyscraper','swordfish'].map((id) => {
     document.querySelector('[data-lesson="' + id + '"]').click();
-    return [id, { pattern:document.querySelectorAll('#academyBoard .pattern-cell').length, elimination:document.querySelectorAll('#academyBoard .elimination-cell').length }];
+    const board = document.querySelector('#academyBoard').getBoundingClientRect();
+    const cell = document.querySelector('#academyBoard .academy-cell').getBoundingClientRect();
+    return [id, {
+      pattern:document.querySelectorAll('#academyBoard .pattern-cell').length,
+      elimination:document.querySelectorAll('#academyBoard .elimination-cell').length,
+      boardWidth:board.width, boardHeight:board.height, cellWidth:cell.width, cellHeight:cell.height
+    }];
   })))()`);
-  assert.deepEqual(Object.values(academyPatterns).map(({ pattern }) => pattern), [1, 1, 2, 4]);
-  assert.ok(academyPatterns.nakedPair.elimination > 0 && academyPatterns.xWing.elimination > 0, 'Advanced lessons must display eliminations');
+  assert.deepEqual(Object.values(academyPatterns).map(({ pattern }) => pattern), [1, 1, 3, 3, 2, 2, 3, 3, 4, 3, 4, 7]);
+  assert.ok(Object.entries(academyPatterns).filter(([id]) => !['nakedSingle','hiddenSingle'].includes(id)).every(([, pattern]) => pattern.elimination > 0), 'Every elimination lesson must display its targets');
+  const boardSizes = Object.values(academyPatterns).map(({ boardWidth, boardHeight }) => [boardWidth, boardHeight]);
+  assert.ok(boardSizes.every(([width, height]) => Math.abs(width - height) < 1), 'Every Academy grid must remain square');
+  assert.ok(Math.max(...boardSizes.map(([width]) => width)) - Math.min(...boardSizes.map(([width]) => width)) < 1, 'Every Academy grid must render at an equivalent size');
+  assert.ok(Object.values(academyPatterns).every(({ cellWidth, cellHeight }) => Math.abs(cellWidth - cellHeight) < 1), 'Academy cells must remain square even with dense candidate notes');
+  await delay(100);
+  await screenshot('mobile-expert-academy-390x844.png');
+
+  await cdp.call('Emulation.setDeviceMetricsOverride', { width:1440, height:1000, deviceScaleFactor:1, mobile:false });
+  await delay(200);
+  const desktopAcademySizes = await evaluate(`(() => ['nakedSingle','pointingPair','nakedPair','hiddenTriple','xyWing','swordfish'].map((id) => {
+    document.querySelector('[data-lesson="' + id + '"]').click();
+    const board = document.querySelector('#academyBoard').getBoundingClientRect();
+    const cells = [...document.querySelectorAll('#academyBoard .academy-cell')].map((cell) => cell.getBoundingClientRect());
+    return { id, width:board.width, height:board.height, minCellWidth:Math.min(...cells.map((cell) => cell.width)), maxCellWidth:Math.max(...cells.map((cell) => cell.width)), minCellHeight:Math.min(...cells.map((cell) => cell.height)), maxCellHeight:Math.max(...cells.map((cell) => cell.height)) };
+  }))()`);
+  assert.ok(desktopAcademySizes.every(({ width, height }) => Math.abs(width - height) < 1), 'Desktop Academy grids must remain square');
+  assert.ok(Math.max(...desktopAcademySizes.map(({ width }) => width)) - Math.min(...desktopAcademySizes.map(({ width }) => width)) < 1, 'Sparse and candidate-heavy desktop grids must use the same dimensions');
+  assert.ok(desktopAcademySizes.every(({ minCellWidth, maxCellWidth, minCellHeight, maxCellHeight }) => maxCellWidth - minCellWidth < 1 && maxCellHeight - minCellHeight < 1), 'Every desktop Academy cell must use equal geometry');
+  await evaluate("document.querySelector('[data-lesson=\"nakedPair\"]').click()");
+  await screenshot('desktop-equal-academy-grid-1440x1000.png');
+  await cdp.call('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:true });
+  await delay(150);
 
   const backup = await evaluate(`(() => {
     document.querySelector('#academyDialog').close(); document.querySelector('#settingsButton').click();
@@ -303,7 +438,7 @@ try {
   await cdp.call('Emulation.setDeviceMetricsOverride', { width:1440, height:1000, deviceScaleFactor:1, mobile:false });
   await delay(250);
   await screenshot('desktop-gameplay-1440x1000.png');
-  console.log(`Browser smoke passed: Edmundas menu, Smart Notes toggle, top-layer notices, hints, PWA, Academy, backup, and responsive layouts.`);
+  console.log(`Browser smoke passed: first-launch language selection, Edmundas menu, Smart Notes, hints, PWA, Academy, backup, and responsive layouts.`);
 } finally {
   cdp?.close();
   browser.kill();

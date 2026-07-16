@@ -7,11 +7,11 @@ A polished, installable Sudoku game that runs entirely in the browser. Sudodoku 
 - Four difficulty levels with uniquely solvable generated puzzles
 - Visible coached hints, smart candidate notes, undo, mistake tracking, keyboard controls, and pause mode
 - Deterministic daily challenges shared by every player for that date
-- Focus scoring, 28 progress-tracked achievements across five rarity tiers, daily streaks, best times, and richer lifetime statistics
+- Focus scoring, 40 progress-tracked achievements across five rarity tiers, daily streaks, best times, and richer lifetime statistics
 - Auto-save, celebration effects, sound feedback, and theme preferences
-- Persistent language selection with English, Lithuanian, Spanish, German, and Ukrainian
-- First-run onboarding, mobile haptics, automatic pause preferences, and shareable results
-- Technique coaching for singles, pairs, and X-Wings
+- A clear first-launch language gate plus persistent switching between English, Lithuanian, Spanish, German, and Ukrainian
+- Guided first-run onboarding, mobile haptics, automatic pause preferences, and shareable results
+- A quick Sudoku rules primer and 12-lesson Technique Academy covering singles, locked candidates, pairs, triples, fish patterns, XY-Wing, and Skyscraper
 - Classic, Killer, Hyper, Mini 6×6, Zen, and deterministic Daily modes
 - Weekly quests, XP levels, replay timelines, generated result cards, and unlockable visual styles
 - Responsive layout, reduced-motion support, light/dark themes, and subtle sound effects
