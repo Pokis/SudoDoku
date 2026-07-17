@@ -19,6 +19,7 @@ A polished, installable Sudoku game that runs entirely in the browser. Sudodoku 
 - Offline asynchronous challenge links with custom rules, benchmark comparison, QR sharing, and compact progress QR transfer
 - Responsive layout, reduced-motion support, light/dark themes, and subtle sound effects
 - Installable PWA with full offline support, explicit install controls, app badges, share-target support, and richer shortcuts
+- Optional Buy Me a Coffee support links in the main menu and Settings
 
 ## Run locally
 

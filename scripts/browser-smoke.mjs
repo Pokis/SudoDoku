@@ -172,6 +172,8 @@ try {
       introVisible:!document.querySelector('#introCard').hidden,
       introLanguage:document.querySelector('#introLanguage').value,
       dedication:document.querySelector('.intro-dedication strong').textContent.trim(),
+      supportText:document.querySelector('.main-menu-header [data-support-link] [data-i18n="support.buyCoffee"]').textContent.trim(),
+      supportLabel:document.querySelector('.main-menu-header [data-support-link]').getAttribute('aria-label'),
       language:prefs.language,
       confirmed:prefs.languageConfirmed
     };
@@ -180,6 +182,8 @@ try {
   assert.equal(confirmedLanguage.introVisible, true);
   assert.equal(confirmedLanguage.introLanguage, 'lt');
   assert.match(confirmedLanguage.dedication, /Edmund/);
+  assert.equal(confirmedLanguage.supportText, 'Nupirk man kavos', 'The support action must be translated into Lithuanian');
+  assert.match(confirmedLanguage.supportLabel, /naujame skirtuke/, 'The support action accessibility label must follow the selected language');
   assert.equal(confirmedLanguage.language, 'lt');
   assert.equal(confirmedLanguage.confirmed, true, 'The explicit language confirmation must persist');
   await delay(300);
@@ -198,7 +202,9 @@ try {
     modes:document.querySelectorAll('[data-menu-mode]').length,
     menuButton:!!document.querySelector('#gameMenuButton'),
     achievements:document.querySelectorAll('#achievementList .achievement-card').length,
-    installVisible:!document.querySelector('.main-menu-header [data-install-app]').hidden
+    installVisible:!document.querySelector('.main-menu-header [data-install-app]').hidden,
+    supportLinks:[...document.querySelectorAll('[data-support-link]')].map((link) => ({ href:link.href, target:link.target, rel:link.rel })),
+    supportVisible:document.querySelector('.main-menu-header [data-support-link]').getClientRects().length > 0
   }))()`);
   assert.equal(mainMenu.visible, true, 'Returning players must land on the main menu');
   assert.doesNotMatch(mainMenu.welcome, /Edmund/i, 'The returning greeting must not identify the player as Edmundas');
@@ -208,6 +214,10 @@ try {
   assert.equal(mainMenu.menuButton, true, 'Gameplay must provide an explicit main-menu action');
   assert.equal(mainMenu.achievements, 40, 'The complete achievement collection must render');
   assert.equal(mainMenu.installVisible, true, 'The main menu must expose the PWA install action');
+  assert.equal(mainMenu.supportLinks.length, 2, 'Support must be available from both the main menu and Settings');
+  assert.equal(mainMenu.supportVisible, true, 'The main-menu support action must be visible');
+  assert.ok(mainMenu.supportLinks.every((link) => link.href === 'https://buymeacoffee.com/djpokis'), 'Every support action must open the intended Buy Me a Coffee page');
+  assert.ok(mainMenu.supportLinks.every((link) => link.target === '_blank' && link.rel.includes('noopener') && link.rel.includes('noreferrer')), 'External support links must open safely in a new tab');
   const installAction = await evaluate(`new Promise((resolve) => {
     const promptEvent = new Event('beforeinstallprompt');
     promptEvent.prompt = () => { window.__sudodokuInstallPrompted = true; };
@@ -232,6 +242,19 @@ try {
 
   await cdp.call('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:true });
   await delay(250);
+  const mobileMenuGeometry = await evaluate(`(() => {
+    const menu = document.querySelector('#mainMenu');
+    const viewport = menu.clientWidth;
+    return {
+      viewport,
+      scrollWidth:menu.scrollWidth,
+      offenders:[...menu.querySelectorAll('*')].map((element) => {
+        const rect = element.getBoundingClientRect();
+        return { selector:element.id ? '#' + element.id : element.className ? '.' + String(element.className).trim().split(/\\s+/).join('.') : element.tagName, left:Math.round(rect.left), right:Math.round(rect.right), width:Math.round(rect.width) };
+      }).filter(({ left, right, width }) => width > 0 && (left < -1 || right > viewport + 1)).slice(0, 10)
+    };
+  })()`);
+  assert.ok(mobileMenuGeometry.scrollWidth <= mobileMenuGeometry.viewport, `The extra main-menu action must not cause internal mobile overflow: ${JSON.stringify(mobileMenuGeometry)}`);
   await screenshot('mobile-main-menu-390x844.png');
   await evaluate("document.querySelector('#menuContinueButton').click()");
   await waitFor("document.querySelector('#mainMenu').hidden && !document.body.classList.contains('main-menu-open')");
@@ -346,16 +369,23 @@ try {
     cache:document.querySelector('#pwaCache').textContent.trim(),
     version:document.querySelector('#pwaVersion').textContent.trim(),
     serviceWorker:!!navigator.serviceWorker.controller,
-    languageOptions:document.querySelectorAll('#settingsLanguage option').length
+    languageOptions:document.querySelectorAll('#settingsLanguage option').length,
+    supportHref:document.querySelector('.support-center [data-support-link]').href,
+    supportText:document.querySelector('.support-center [data-i18n="support.buyCoffee"]').textContent.trim()
   }))()`);
   assert.equal(pwa.dialog, true, 'Settings must open on mobile');
   assert.ok(pwa.cache, 'PWA cache diagnostic must be visible');
   assert.match(pwa.version, /^v\d+$/);
   assert.equal(pwa.serviceWorker, true, 'PWA diagnostics must report an active controller');
   assert.equal(pwa.languageOptions, 5, 'Settings must keep every language available after onboarding');
+  assert.equal(pwa.supportHref, 'https://buymeacoffee.com/djpokis', 'Settings must expose the donation destination');
+  assert.equal(pwa.supportText, 'Buy me a coffee', 'Settings must explain the optional support action clearly');
   assert.ok(await evaluate("!!document.querySelector('#backupExportButton') && !!document.querySelector('#backupRestoreButton')"), 'Backup and restore controls must be present');
   assert.match(await evaluate("document.querySelector('.settings-dedication strong').textContent"), /Edmundas/, 'Settings must preserve the personal dedication');
   await screenshot('mobile-pwa-center-390x844.png');
+  await evaluate("document.querySelector('.support-center').scrollIntoView({block:'center'})");
+  await delay(300);
+  await screenshot('mobile-support-center-390x844.png');
 
   await evaluate("document.querySelector('#settingsDialog').close()");
   const menuReturn = await evaluate(`(() => {

@@ -1,4 +1,4 @@
-const VERSION = 'v20';
+const VERSION = 'v21';
 const CACHE = `sudodoku-${VERSION}`;
 const CORE = [
   './', './index.html', './styles.css', './manifest.webmanifest',

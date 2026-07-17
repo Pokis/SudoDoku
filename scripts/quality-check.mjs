@@ -53,8 +53,15 @@ await check('offline bundle integrity and safe updates', async () => {
 });
 
 await check('no hosted runtime dependencies', async () => {
-  const externalAssets = [...html.matchAll(/(?:src|href)="(https?:\/\/[^\"]+)"/gi)].map((match) => match[1]);
-  assert.deepEqual(externalAssets, []);
+  const supportUrl = 'https://buymeacoffee.com/djpokis';
+  const externalReferences = [...html.matchAll(/(?:src|href)="(https?:\/\/[^\"]+)"/gi)].map((match) => match[1]);
+  assert.deepEqual(externalReferences, [supportUrl, supportUrl], 'Only the approved support destination may be external');
+  const supportAnchors = [...html.matchAll(/<a\b([^>]*)>/gi)].filter(([, attributes]) => attributes.includes(`href="${supportUrl}"`));
+  assert.equal(supportAnchors.length, 2, 'Support must be available in the main menu and Settings');
+  for (const [, attributes] of supportAnchors) {
+    assert.match(attributes, /target="_blank"/i);
+    assert.match(attributes, /rel="[^"]*noopener[^"]*noreferrer[^"]*"/i);
+  }
   assert.doesNotMatch(css, /@import\s+url\(https?:/i);
 });
 
